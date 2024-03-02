@@ -6,9 +6,9 @@ RUN apk add --no-cache bash jq curl git wget unzip
 
 # Download and Install Terraform
 ARG TERRAFORM_VERSION="1.7.4"
-RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
-    && unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip -d /usr/bin \
-    && rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
+RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_386.zip \
+    && unzip terraform_${TERRAFORM_VERSION}_linux_386.zip -d /usr/bin \
+    && rm terraform_${TERRAFORM_VERSION}_linux_386.zip
 
 # Define an environment variable for the script to use
 ENV JSON_DATA='{"example":"data"}'
