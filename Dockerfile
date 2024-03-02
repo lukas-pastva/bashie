@@ -16,12 +16,16 @@ RUN echo '#!/bin/bash' > /entrypoint.sh \
     && echo 'for row in $(echo "${JSON_DATA}" | jq -r "to_entries|map(\"\(.key)=VAR_\(.value|tostring)\")|.[]"); do' >> /entrypoint.sh \
     && echo '  export $row' >> /entrypoint.sh \
     && echo 'done' >> /entrypoint.sh \
-    && echo 'echo "Running the passed command..."' >> /entrypoint.sh \
-    && echo 'exec "$@"' >> /entrypoint.sh \
+    && echo 'echo "Environment variables are set."' >> /entrypoint.sh \
+    && echo '/run_script.sh' >> /entrypoint.sh \
     && chmod +x /entrypoint.sh
+
+# Create a default run_script.sh that can be overridden by mounting a volume or building a derived image
+RUN echo '#!/bin/bash' > /run_script.sh \
+    && echo 'echo "Running default script..."' >> /run_script.sh \
+    && chmod +x /run_script.sh
 
 # Set the entrypoint script
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
-# Default command if none is provided to docker run
-CMD ["echo", "No command provided."]
+# There's no need for a CMD because /entrypoint.sh now takes care of executing /run_script.sh
