@@ -1,7 +1,26 @@
-FROM alpine:latest
+FROM ubuntu:latest
 
-# Install bash, jq, curl, git, wget, and unzip
-RUN apk add --no-cache bash jq curl git wget unzip
+RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends -o=Dpkg::Use-Pty=0 \
+        bash \
+        jq \
+        curl \
+        git \
+        wget \
+        unzip \
+        apt-transport-https \
+        ca-certificates \
+        cron \
+        apache2-utils \
+        libzip-dev \
+        msmtp \
+        msmtp-mta \
+        pcregrep \
+        vim \
+        zip \
+        s3cmd && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Download and Install Terraform
 ARG TERRAFORM_VERSION="1.7.4"
