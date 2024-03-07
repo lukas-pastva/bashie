@@ -5,6 +5,7 @@ RUN apt-get update -qq && \
         bash \
         jq \
         curl \
+        gettext \
         git \
         wget \
         unzip \
