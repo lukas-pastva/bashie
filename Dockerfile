@@ -20,7 +20,7 @@ RUN apt-get update -qq && \
         vim \
         zip \
         s3cmd \
-        s3fs && \ # Added s3fs here directly
+        s3fs && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
