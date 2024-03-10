@@ -32,5 +32,6 @@ RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform
 
 WORKDIR /tmp/app
 COPY entrypoint.sh /entrypoint.sh
+COPY functions.inc.sh /functions.inc.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
