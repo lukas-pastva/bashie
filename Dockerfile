@@ -31,7 +31,7 @@ RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform
     && rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
 WORKDIR /tmp/app
-COPY entrypoint.sh /entrypoint.sh
 COPY functions.inc.sh /functions.inc.sh
+COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
