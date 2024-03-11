@@ -156,11 +156,11 @@ gitlab_backup() {
   # Function to zip and clean up the backup directories
   _zip_and_cleanup() {
       local backup_root_dir=$1  # The root directory where all backups are stored
+      local group_id=$2         # GitLab Group ID to include in the zip filename
 
       echo "Compressing backup directories into a single archive..."
-      # Creating a ZIP file for the entire backup directory
-      # Note: Adjust the zip command according to your needs or system compatibility
-      zip -r "${backup_root_dir}/gitlab_backup_$(date +%Y-%m-%d_%H-%M-%S).zip" "$backup_root_dir" -x "*.zip"
+      # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
+      zip -r "${backup_root_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "$backup_root_dir" -x "*.zip"
 
       echo "Removing original backup directories..."
       # Find and delete the original directories but keep the zip file
@@ -244,5 +244,5 @@ gitlab_backup() {
   }
 
   _clone_recursive "$group_id" "$parent_path"
-  _zip_and_cleanup "$parent_path"
+  _zip_and_cleanup "$parent_path" "$group_id"
 }
