@@ -79,6 +79,11 @@ gitlab_backup() {
       read group_id
       export group_id="${group_id}"
   fi
+  if [[ ${zip_destination_dir} == "" ]]; then
+      echo "Enter Destination directory into which the zip will be created: "
+      read zip_destination_dir
+      export zip_destination_dir="${zip_destination_dir}"
+  fi
 
   local parent_path=$(pwd)
 
@@ -156,11 +161,16 @@ gitlab_backup() {
   # Function to zip and clean up the backup directories
   _zip_and_cleanup() {
       local backup_root_dir=$1  # The root directory where all backups are stored
-      local group_id=$2         # GitLab Group ID to include in the zip filename
+      local zip_destination_dir=$2  # The destination directory for the zip file
+      local group_id=$3         # GitLab Group ID to include in the zip filename
+
+      # Ensure the zip destination directory exists
+      mkdir -p "$zip_destination_dir"
 
       echo "Compressing backup directories into a single archive..."
       # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
-      zip -r "${backup_root_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "$backup_root_dir" -x "*.zip"
+      # The zip file is now created in the specified destination directory
+      zip -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "$backup_root_dir" -x "*.zip"
 
       echo "Removing original backup directories..."
       # Find and delete the original directories but keep the zip file
@@ -168,6 +178,7 @@ gitlab_backup() {
 
       echo "Backup and cleanup process completed."
   }
+
 
   # Recursive function to clone projects and handle subgroups, including variables, issues, CI/CD settings, and CI/CD variables backup
   _clone_recursive() {
@@ -244,5 +255,5 @@ gitlab_backup() {
   }
 
   _clone_recursive "$group_id" "$parent_path"
-  _zip_and_cleanup "$parent_path" "$group_id"
+  _zip_and_cleanup "$parent_path" "$zip_destination_dir" "$group_id"
 }
