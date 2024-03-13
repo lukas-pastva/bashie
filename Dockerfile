@@ -30,6 +30,10 @@ RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform
     && unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip -d /usr/bin \
     && rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
+# Install yq
+RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && \
+    chmod +x /usr/bin/yq
+
 WORKDIR /tmp/app
 COPY functions.inc.sh /functions.inc.sh
 COPY entrypoint.sh /entrypoint.sh
