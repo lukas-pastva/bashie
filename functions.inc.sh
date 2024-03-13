@@ -257,3 +257,27 @@ gitlab_backup() {
   _clone_recursive "$group_id" "$parent_path"
   _zip_and_cleanup "$parent_path" "$zip_destination_dir" "$group_id"
 }
+
+update_gitlab_file() {
+    project_id="$1"
+    file_path="$2"
+    branch_name="$3"
+    commit_message="$4"
+    file_contents="$5"
+
+    encoded_file_path=$(echo "$file_path" | jq -sRr @uri)
+
+    api_url="https://gitlab.com/api/v4/projects/${project_id}/repository/files/${encoded_file_path}"
+
+    # API request
+    curl --request PUT "$api_url" \
+        --header "PRIVATE-TOKEN: $GLOBAL_GIT_TOKEN" \
+        --header "Content-Type: application/json" \
+        --data "{
+            \"branch\": \"${branch_name}\",
+            \"author_email\": \"$GLOBAL_GIT_EMAIL\",
+            \"author_name\": \"$GLOBAL_GIT_USER\",
+            \"content\": \"${file_contents}\",
+            \"commit_message\": \"${commit_message}\"
+        }"
+}
