@@ -269,6 +269,8 @@ update_gitlab_file() {
 
     api_url="https://gitlab.com/api/v4/projects/${project_id}/repository/files/${encoded_file_path}"
 
+    json_safe_contents=$(echo "$file_contents" | jq -sR .)
+
     # API request
     curl --request PUT "$api_url" \
         --header "PRIVATE-TOKEN: $GLOBAL_GIT_TOKEN" \
@@ -277,7 +279,7 @@ update_gitlab_file() {
             \"branch\": \"${branch_name}\",
             \"author_email\": \"$GLOBAL_GIT_EMAIL\",
             \"author_name\": \"$GLOBAL_GIT_USER\",
-            \"content\": \"${file_contents}\",
+            \"content\": $json_safe_contents,
             \"commit_message\": \"${commit_message}\"
         }"
 }
