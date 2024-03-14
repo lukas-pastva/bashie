@@ -20,9 +20,9 @@ function add_file_on_git() {
   echo -e "${CONTENTS}" > "/tmp/${GIT_REPO}/${THE_FILE}"
   # Commit changes
   cd /tmp/${GIT_REPO}
-  git add .
-  git commit -m "Added by automation."
-  git push
+  git add . >/dev/null
+  git commit -m "Added by automation." >/dev/null
+  git push >/dev/null
 }
 update_ingress_url() {
   local namespace=$1
@@ -57,9 +57,9 @@ function edit_file_on_git() {
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
     # Commit changes
-    git add .
-    git commit -m "Added by automation."
-    git push
+    git add . >/dev/null
+    git commit -m "Added by automation." >/dev/null
+    git push >/dev/null
   else
     echo "---> Contents already exist in the file. No changes made."
   fi
