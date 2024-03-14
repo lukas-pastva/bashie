@@ -46,7 +46,7 @@ function edit_file_on_git() {
   local UNIQUE_IDENTIFIER=$5
 
   cd /tmp
-  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL} >/dev/null
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git >/dev/null
   cd /tmp/${GIT_REPO}
 
   # Check if CONTENTS already exists in the file
