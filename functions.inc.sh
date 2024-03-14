@@ -16,14 +16,14 @@ function add_file_on_git() {
 
   rm -rf /tmp/${GIT_REPO} || true
   cd /tmp
-  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git >/dev/null
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git > /dev/null 2>&1
   # Save file
   echo -e "${CONTENTS}" > "/tmp/${GIT_REPO}/${THE_FILE}"
   # Commit changes
   cd /tmp/${GIT_REPO}
-  git add . >/dev/null
-  git commit -m "Added by automation." >/dev/null
-  git push >/dev/null
+  git add . > /dev/null 2>&1
+  git commit -m "Added by automation." > /dev/null 2>&1
+  git push > /dev/null 2>&1
 }
 update_ingress_url() {
   local namespace=$1
@@ -34,7 +34,7 @@ update_ingress_url() {
   local ingress_path="/apis/networking.k8s.io/v1/namespaces/${namespace}/ingresses/${ingress_name}"
   local ingress_json=$(curl -sSk -H "Authorization: Bearer ${token}" "${api_server}${ingress_path}")
   local updated_json=$(echo "${ingress_json}" | jq --arg new_domain "${new_domain}" '.spec.rules[0].host = $new_domain')
-  curl -sSk -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' -d "${updated_json}" "${api_server}${ingress_path}" >/dev/null
+  curl -sSk -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' -d "${updated_json}" "${api_server}${ingress_path}" > /dev/null 2>&1
 }
 
 function edit_file_on_git() {
@@ -46,7 +46,7 @@ function edit_file_on_git() {
   local UNIQUE_IDENTIFIER=$5
 
   cd /tmp
-  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git >/dev/null
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git > /dev/null 2>&1
   cd /tmp/${GIT_REPO}
 
   # Check if CONTENTS already exists in the file
@@ -58,9 +58,9 @@ function edit_file_on_git() {
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
     # Commit changes
-    git add . >/dev/null
-    git commit -m "Added by automation." >/dev/null
-    git push >/dev/null
+    git add . > /dev/null 2>&1
+    git commit -m "Added by automation." > /dev/null 2>&1
+    git push > /dev/null 2>&1
   else
     echo "---> Contents already exist in the file. No changes made."
   fi
@@ -213,7 +213,7 @@ gitlab_backup() {
               else
                   echo "Cloning all branches of $modified_clone_url into $clone_dir"
                   mkdir -p "$clone_dir"
-                  git clone --quiet "$modified_clone_url" "$clone_dir" >/dev/null
+                  git clone --quiet "$modified_clone_url" "$clone_dir" > /dev/null 2>&1
               fi
 
               # Cloning the mirror repository
@@ -224,7 +224,7 @@ gitlab_backup() {
               else
                   echo "Cloning a mirror of $modified_clone_url into $mirror_dir"
                   mkdir -p "$mirror_dir"
-                  git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" >/dev/null
+                  git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
               fi
 
               # Backing up variables and issues
@@ -286,6 +286,6 @@ update_gitlab_file() {
             \"author_name\": \"$GLOBAL_GIT_USER\",
             \"content\": $json_safe_contents,
             \"commit_message\": \"${commit_message}\"
-        }"
+        }" > /dev/null 2>&1
 
 }
