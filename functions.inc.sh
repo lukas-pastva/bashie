@@ -88,7 +88,6 @@ gitlab_backup() {
 
   local parent_path=$(pwd)
 
-  # Function to backup project variables
   _backup_variables() {
       local project_id=$1
       local backup_dir=$2
