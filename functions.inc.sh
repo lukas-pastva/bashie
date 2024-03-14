@@ -13,7 +13,7 @@ function add_file_on_git() {
   local GIT_REPO="${GIT_URL##*/}"
   local THE_FILE=$2
   local CONTENTS=$3
-  # Cleanup and clone the repository
+
   rm -rf /tmp/${GIT_REPO} || true
   cd /tmp
   git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git >/dev/null
