@@ -66,6 +66,7 @@ function edit_file_on_git() {
   fi
 }
 
+
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 gitlab_backup() {
   if [[ ${gitlab_private_token} == "" ]]; then
