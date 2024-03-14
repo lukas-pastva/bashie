@@ -45,26 +45,26 @@ function edit_file_on_git() {
   local UNIQUE_IDENTIFIER=$5
 
   # Cleanup and clone the repository
-  rm -rf "/tmp/${GIT_REPO}"
-  cd /tmp && git clone "https://${GLOBAL_GIT_TOKEN}@${GIT_URL}"
+  rm -rf /tmp/${GIT_REPO} 2>/dev/null || true
+  cd /tmp && git clone https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL} >/dev/null 2>&1
 
-  cd "/tmp/${GIT_REPO}"
-
+  # Check if CONTENTS already exists in the file
   if ! grep -Fq "$UNIQUE_IDENTIFIER" "${THE_FILE}"; then
-    preprocessed_VAR=$(printf '%s' "$CONTENTS" | sed 's/\\/\\\\/g;s/$/\\/')
-    preprocessed_VAR="${preprocessed_VAR%\\}"
 
-    sed -i "/GENERATED $ANCHOR START/a $preprocessed_VAR" "${THE_FILE}"
+    # Save file
+    preprocessed_VAR=$(printf '%s' "$CONTENTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
+    sed -i -e "/GENERATED $ANCHOR START/a\\
+    ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
-    git add "${THE_FILE}"
-    git commit -m "Added by automation."
-    git push
-    echo "---> Content successfully added and pushed."
+    # Commit changes
+    cd /tmp/${GIT_REPO}
+    git add . >/dev/null 2>&1
+    git commit -m "Added by automation." >/dev/null 2>&1
+    git push >/dev/null 2>&1
   else
-    echo "---> Contents related to the unique identifier already exist in the file. No changes made."
+    echo "---> Contents already exist in the file. No changes made."
   fi
 }
-
 
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 gitlab_backup() {
