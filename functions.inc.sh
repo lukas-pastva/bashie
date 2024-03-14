@@ -44,9 +44,9 @@ function edit_file_on_git() {
   local CONTENTS=$4
   local UNIQUE_IDENTIFIER=$5
 
-  # Cleanup and clone the repository
-  rm -rf /tmp/${GIT_REPO} || true
-  cd /tmp && git clone https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}
+  cd /tmp
+  git clone https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}
+  cd /tmp/${GIT_REPO}
 
   # Check if CONTENTS already exists in the file
   if ! grep -Fq "$UNIQUE_IDENTIFIER" "${THE_FILE}"; then
@@ -57,13 +57,13 @@ function edit_file_on_git() {
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
     # Commit changes
-    cd /tmp/${GIT_REPO}
     git add .
     git commit -m "Added by automation."
     git push
   else
     echo "---> Contents already exist in the file. No changes made."
   fi
+  rm -rf /tmp/${GIT_REPO} || true
 }
 
 
