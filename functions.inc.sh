@@ -288,5 +288,4 @@ update_gitlab_file() {
             \"commit_message\": \"${commit_message}\"
         }"
 
-    echo "curl --request PUT \"$api_url\" --header \"PRIVATE-TOKEN: $GLOBAL_GIT_TOKEN\" --header \"Content-Type: application/json\" --data \"{\"branch\": \"${branch_name}\", \"author_email\": \"$GLOBAL_GIT_EMAIL\", \"author_name\": \"$GLOBAL_GIT_USER\", \"content\": $json_safe_contents, \"commit_message\": \"${commit_message}\"}\""
 }
