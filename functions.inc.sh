@@ -6,7 +6,7 @@ vault_secret_ad_item() {
   local newValue=$3
   local currentSecret=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq '.data.data')
   local updatedSecret=$(echo ${currentSecret} | jq --arg key "${newKey}" --arg value "$newValue" '. + {($key): $value}')
-  curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" -H "Content-Type: application/json" --data "{\"data\": ${updatedSecret}}" "${VAULT_ADDR}/v1/kv/data/${secretPath}" > /dev/null
+  curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" -H "Content-Type: application/json" --data "{\"data\": ${updatedSecret}}" "${VAULT_ADDR}/v1/kv/data/${secretPath}"
 }
 function add_file_on_git() {
   local GIT_URL=$1
@@ -14,15 +14,15 @@ function add_file_on_git() {
   local THE_FILE=$2
   local CONTENTS=$3
   # Cleanup and clone the repository
-  rm -rf /tmp/${GIT_REPO} 2>/dev/null || true
-  cd /tmp && git clone https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL} >/dev/null 2>&1
+  rm -rf /tmp/${GIT_REPO} || true
+  cd /tmp && git clone https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}
   # Save file
   echo -e "${CONTENTS}" > "/tmp/${GIT_REPO}/${THE_FILE}"
   # Commit changes
   cd /tmp/${GIT_REPO}
-  git add . >/dev/null 2>&1
-  git commit -m "Added by automation." >/dev/null 2>&1
-  git push >/dev/null 2>&1
+  git add .
+  git commit -m "Added by automation."
+  git push
 }
 update_ingress_url() {
   local namespace=$1
@@ -33,7 +33,7 @@ update_ingress_url() {
   local ingress_path="/apis/networking.k8s.io/v1/namespaces/${namespace}/ingresses/${ingress_name}"
   local ingress_json=$(curl -sSk -H "Authorization: Bearer ${token}" "${api_server}${ingress_path}")
   local updated_json=$(echo "${ingress_json}" | jq --arg new_domain "${new_domain}" '.spec.rules[0].host = $new_domain')
-  curl -sSk -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' -d "${updated_json}"  "${api_server}${ingress_path}" > /dev/null
+  curl -sSk -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' -d "${updated_json}" "${api_server}${ingress_path}"
 }
 
 function edit_file_on_git() {
@@ -45,8 +45,8 @@ function edit_file_on_git() {
   local UNIQUE_IDENTIFIER=$5
 
   # Cleanup and clone the repository
-  rm -rf /tmp/${GIT_REPO} 2>/dev/null || true
-  cd /tmp && git clone https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL} >/dev/null 2>&1
+  rm -rf /tmp/${GIT_REPO} || true
+  cd /tmp && git clone https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}
 
   # Check if CONTENTS already exists in the file
   if ! grep -Fq "$UNIQUE_IDENTIFIER" "${THE_FILE}"; then
@@ -58,9 +58,9 @@ function edit_file_on_git() {
 
     # Commit changes
     cd /tmp/${GIT_REPO}
-    git add . >/dev/null 2>&1
-    git commit -m "Added by automation." >/dev/null 2>&1
-    git push >/dev/null 2>&1
+    git add .
+    git commit -m "Added by automation."
+    git push
   else
     echo "---> Contents already exist in the file. No changes made."
   fi
