@@ -16,7 +16,7 @@ function add_file_on_git() {
   # Cleanup and clone the repository
   rm -rf /tmp/${GIT_REPO} || true
   cd /tmp
-  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL} >/dev/null
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git >/dev/null
   # Save file
   echo -e "${CONTENTS}" > "/tmp/${GIT_REPO}/${THE_FILE}"
   # Commit changes
