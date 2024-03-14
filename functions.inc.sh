@@ -15,7 +15,8 @@ function add_file_on_git() {
   local CONTENTS=$3
   # Cleanup and clone the repository
   rm -rf /tmp/${GIT_REPO} || true
-  cd /tmp && git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}
+  cd /tmp
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL} >/dev/null
   # Save file
   echo -e "${CONTENTS}" > "/tmp/${GIT_REPO}/${THE_FILE}"
   # Commit changes
@@ -45,7 +46,7 @@ function edit_file_on_git() {
   local UNIQUE_IDENTIFIER=$5
 
   cd /tmp
-  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL} >/dev/null
   cd /tmp/${GIT_REPO}
 
   # Check if CONTENTS already exists in the file
@@ -211,7 +212,8 @@ gitlab_backup() {
                   (cd "$clone_dir" && git pull)
               else
                   echo "Cloning all branches of $modified_clone_url into $clone_dir"
-                  mkdir -p "$clone_dir" && git clone --quiet "$modified_clone_url" "$clone_dir"
+                  mkdir -p "$clone_dir"
+                  git clone --quiet "$modified_clone_url" "$clone_dir" >/dev/null
               fi
 
               # Cloning the mirror repository
@@ -221,7 +223,8 @@ gitlab_backup() {
                   (cd "$mirror_dir" && git remote update)
               else
                   echo "Cloning a mirror of $modified_clone_url into $mirror_dir"
-                  mkdir -p "$mirror_dir" && git clone --quiet --mirror "$modified_clone_url" "$mirror_dir"
+                  mkdir -p "$mirror_dir"
+                  git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" >/dev/null
               fi
 
               # Backing up variables and issues
