@@ -265,10 +265,13 @@ update_gitlab_file() {
     commit_message="$4"
     file_contents="$5"
 
-    encoded_file_path=$(echo "$file_path" | jq -sRr @uri)
+    # Encode the file path for URL
+    encoded_file_path=$(printf '%s' "$file_path" | jq -sRr @uri)
 
+    # Construct the API URL dynamically, ensuring there's no newline character at the end
     api_url="https://gitlab.com/api/v4/projects/${project_id}/repository/files/${encoded_file_path}"
 
+    # Ensure the file contents are properly escaped as a JSON string
     json_safe_contents=$(echo "$file_contents" | jq -sR .)
 
     # API request
