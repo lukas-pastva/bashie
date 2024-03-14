@@ -278,7 +278,6 @@ update_gitlab_file() {
     # Ensure the file contents are properly escaped as a JSON string
     json_safe_contents=$(echo "$file_contents" | jq -sR .)
 
-    # API request
     curl --request PUT "$api_url" \
         --header "PRIVATE-TOKEN: $GLOBAL_GIT_TOKEN" \
         --header "Content-Type: application/json" \
