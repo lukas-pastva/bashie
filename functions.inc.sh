@@ -165,7 +165,6 @@ gitlab_backup() {
       local zip_destination_dir=$2  # The destination directory for the zip file
       local group_id=$3         # GitLab Group ID to include in the zip filename
 
-      # Ensure the zip destination directory exists
       mkdir -p "$zip_destination_dir"
 
       echo "Compressing backup directories into a single archive..."
