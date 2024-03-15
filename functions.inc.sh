@@ -171,7 +171,7 @@ gitlab_backup() {
       echo "Compressing backup directories into a single archive..."
       # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
       # The zip file is now created in the specified destination directory
-      zip -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "$backup_root_dir" -x "*.zip"
+      zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "$backup_root_dir" -x "*.zip"
 
       echo "Removing original backup directories..."
       # Find and delete the original directories but keep the zip file
