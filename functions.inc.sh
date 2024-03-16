@@ -289,8 +289,6 @@ update_gitlab_file() {
 
 }
 
-
-
 vault_delete_secrets() {
     # Find the Vault pod and namespace
     local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
@@ -324,15 +322,19 @@ vault_delete_secrets() {
         return
     fi
 
-    for group in $GROUPS_LIST; do
-        # Ensure group name ends with a slash for proper listing
-        group="${group%/}/" # Add a trailing slash if not present
+    # Save and change IFS to only split on newlines
+    OLD_IFS=$IFS
+    IFS=$'\n'
+
+    # Process groups
+    echo "$GROUPS_LIST" | while read -r group; do
+        group="${group%/}/" # Ensure group ends with a slash
 
         # List secrets within each group
         local SECRETS_LIST=$(curl -s -X LIST --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp/$group" | jq -r '.data.keys[]')
 
         if [ -z "$SECRETS_LIST" ] || [ "$SECRETS_LIST" == "null" ]; then
-            echo "No secrets found in group $group."
+            echo "No secrets found in group $group"
             continue
         fi
 
@@ -347,15 +349,16 @@ vault_delete_secrets() {
             continue
         fi
 
-        # Proceed with deletion
-        for secret in $SECRETS_LIST; do
-            local full_path="$group$secret"
-            full_path="${full_path%/}" # Remove any trailing slash for deletion
-            echo "Deleting secret: $full_path"
+        # Process secrets
+        echo "$SECRETS_LIST" | while read -r secret; do
+            echo "Deleting secret: $group$secret"
             # Uncomment the line below to actually perform the deletion
-            # curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/remp/$full_path"
+            # curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/remp/$group$secret"
         done
     done
+
+    # Restore IFS
+    IFS=$OLD_IFS
 
     # Kill the port-forward process
     kill $PF_PID
