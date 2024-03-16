@@ -288,3 +288,75 @@ update_gitlab_file() {
         }" > /dev/null 2>&1
 
 }
+
+
+
+vault_delete_secrets() {
+    # Find the Vault pod and namespace
+    local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
+    local VAULT_POD=$(echo $VAULT_POD_INFO | cut -d' ' -f1)
+    local VAULT_NAMESPACE=$(echo $VAULT_POD_INFO | cut -d' ' -f2)
+
+    if [ -z "$VAULT_POD" ] || [ -z "$VAULT_NAMESPACE" ]; then
+        echo "Vault pod could not be found."
+        return
+    fi
+
+    # Setup port forwarding
+    kubectl port-forward -n "$VAULT_NAMESPACE" "$VAULT_POD" 8200:8200 &
+    local PF_PID=$!
+    sleep 2 # Wait for port forwarding to establish
+
+    # Prompt for Vault token
+    echo -n "Enter Vault Token: "
+    read -rs VAULT_TOKEN
+    echo "" # Move to a new line
+
+    # Set Vault address
+    local VAULT_ADDR="http://localhost:8200"
+
+    # List groups with the 'test-' prefix
+    local GROUPS_LIST=$(curl -s -X LIST --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp" | jq -r '.data.keys[]' | grep ^test-)
+
+    if [ -z "$GROUPS_LIST" ]; then
+        echo "No groups matching 'test-' prefix found."
+        kill $PF_PID
+        return
+    fi
+
+    for group in $GROUPS_LIST; do
+        # Ensure group name ends with a slash for proper listing
+        group="${group%/}/" # Add a trailing slash if not present
+
+        # List secrets within each group
+        local SECRETS_LIST=$(curl -s -X LIST --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp/$group" | jq -r '.data.keys[]')
+
+        if [ -z "$SECRETS_LIST" ] || [ "$SECRETS_LIST" == "null" ]; then
+            echo "No secrets found in group $group."
+            continue
+        fi
+
+        echo "The following secrets will be deleted in group $group:"
+        echo "$SECRETS_LIST"
+
+        # Confirmation prompt
+        echo -n "Are you sure you want to delete the above secrets in group $group? (y/N): "
+        read -r CONFIRMATION
+        if [[ "$CONFIRMATION" != "y" && "$CONFIRMATION" != "Y" ]]; then
+            echo "Deletion cancelled."
+            continue
+        fi
+
+        # Proceed with deletion
+        for secret in $SECRETS_LIST; do
+            local full_path="$group$secret"
+            full_path="${full_path%/}" # Remove any trailing slash for deletion
+            echo "Deleting secret: $full_path"
+            # Uncomment the line below to actually perform the deletion
+            # curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/remp/$full_path"
+        done
+    done
+
+    # Kill the port-forward process
+    kill $PF_PID
+}
