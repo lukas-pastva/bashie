@@ -289,7 +289,7 @@ update_gitlab_file() {
 
 }
 
-vault_delete_secrets() {
+function vault_delete_secrets() {
     # Find the Vault pod and namespace
     local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
     local VAULT_POD=$(echo "$VAULT_POD_INFO" | cut -d' ' -f1)
@@ -326,7 +326,7 @@ vault_delete_secrets() {
     OLD_IFS=$IFS
     IFS=$'\n'
 
-    echo "$GROUPS_LIST" | while read -r group; do
+    while read -r group; do
         group="${group%/}/" # Ensure group ends with a slash
 
         local SECRETS_LIST=$(curl -s -X LIST --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp/$group" | jq -r '.data.keys[]')
@@ -339,19 +339,14 @@ vault_delete_secrets() {
         echo "The following secrets will be deleted in group $group:"
         echo "$SECRETS_LIST"
 
-        echo -n "Are you sure you want to delete the above secrets in group $group? (y/N): "
-        read -r CONFIRMATION
-        if [[ "$CONFIRMATION" != "y" && "$CONFIRMATION" != "Y" ]]; then
-            echo "Deletion cancelled."
-            continue
-        fi
+        echo -n "Secrets from group $group above, will be now deleted, you have 10 seconds to cancel... "
+        sleep 10
 
         echo "$SECRETS_LIST" | while read -r secret; do
             echo "Deleting secret: $group$secret"
-            # Uncomment to actually perform the deletion
-            # curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/remp/$group$secret"
+            curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/remp/$group$secret"
         done
-    done
+    done < <(echo "$GROUPS_LIST")
 
     IFS=$OLD_IFS
     kill $PF_PID
