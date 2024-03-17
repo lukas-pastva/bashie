@@ -292,8 +292,8 @@ update_gitlab_file() {
 vault_delete_secrets() {
     # Find the Vault pod and namespace
     local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
-    local VAULT_POD=$(echo $VAULT_POD_INFO | cut -d' ' -f1)
-    local VAULT_NAMESPACE=$(echo $VAULT_POD_INFO | cut -d' ' -f2)
+    local VAULT_POD=$(echo "$VAULT_POD_INFO" | cut -d' ' -f1)
+    local VAULT_NAMESPACE=$(echo "$VAULT_POD_INFO" | cut -d' ' -f2)
 
     if [ -z "$VAULT_POD" ] || [ -z "$VAULT_NAMESPACE" ]; then
         echo "Vault pod could not be found."
@@ -326,11 +326,9 @@ vault_delete_secrets() {
     OLD_IFS=$IFS
     IFS=$'\n'
 
-    # Process groups
     echo "$GROUPS_LIST" | while read -r group; do
         group="${group%/}/" # Ensure group ends with a slash
 
-        # List secrets within each group
         local SECRETS_LIST=$(curl -s -X LIST --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp/$group" | jq -r '.data.keys[]')
 
         if [ -z "$SECRETS_LIST" ] || [ "$SECRETS_LIST" == "null" ]; then
@@ -341,7 +339,6 @@ vault_delete_secrets() {
         echo "The following secrets will be deleted in group $group:"
         echo "$SECRETS_LIST"
 
-        # Confirmation prompt
         echo -n "Are you sure you want to delete the above secrets in group $group? (y/N): "
         read -r CONFIRMATION
         if [[ "$CONFIRMATION" != "y" && "$CONFIRMATION" != "Y" ]]; then
@@ -349,17 +346,13 @@ vault_delete_secrets() {
             continue
         fi
 
-        # Process secrets
         echo "$SECRETS_LIST" | while read -r secret; do
             echo "Deleting secret: $group$secret"
-            # Uncomment the line below to actually perform the deletion
+            # Uncomment to actually perform the deletion
             # curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/remp/$group$secret"
         done
     done
 
-    # Restore IFS
     IFS=$OLD_IFS
-
-    # Kill the port-forward process
     kill $PF_PID
 }
