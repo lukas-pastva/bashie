@@ -246,7 +246,6 @@ gitlab_backup() {
       done
   }
 
-
   local backup_root_dir="/tmp/gitlab-backup_${group_id}_$(date +%Y-%m-%d_%H-%M-%S)/files"
   local zip_destination_dir="/tmp/gitlab-backup_${group_id}_$(date +%Y-%m-%d_%H-%M-%S)/zip"
   mkdir -p "${backup_root_dir}"
