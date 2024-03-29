@@ -131,26 +131,26 @@ gitlab_backup() {
   _backup_cicd_settings() {
       local group_id=$1
       local backup_dir=$2
-      echo "Backing up CI/CD settings for group ID $group_id"
-      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "https://gitlab.com/api/v4/groups/$group_id/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
+      echo "Backing up CI/CD settings for group ID ${group_id}"
+      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "https://gitlab.com/api/v4/groups/${group_id}/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
   }
 
   # Function to backup group issues
   _backup_group_issues() {
       local group_id=$1
       local backup_dir=$2
-      echo "Backing up issues for group ID $group_id"
+      echo "Backing up issues for group ID ${group_id}"
       curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "https://gitlab.com/api/v4/groups/$group_id/issues" > "$backup_dir/group_issues.json"
+          "https://gitlab.com/api/v4/groups/${group_id}/issues" > "$backup_dir/group_issues.json"
   }
 
   # New function to backup CI/CD variables for a group
   _backup_group_variables() {
       local group_id=$1
       local backup_dir=$2
-      echo "Backing up CI/CD variables for group ID $group_id"
+      echo "Backing up CI/CD variables for group ID ${group_id}"
       curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "https://gitlab.com/api/v4/groups/$group_id/variables" > "$backup_dir/group_variables.json"
+          "https://gitlab.com/api/v4/groups/${group_id}/variables" > "$backup_dir/group_variables.json"
   }
 
   # Function to zip and clean up the backup directories
@@ -158,7 +158,6 @@ gitlab_backup() {
       local backup_root_dir=$1  # The root directory where all backups are stored
       local zip_destination_dir=$2  # The destination directory for the zip file
       local group_id=$3         # GitLab Group ID to include in the zip filename
-      local date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
 
       echo "Compressing backup directories into a single archive..."
       # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
@@ -217,6 +216,7 @@ gitlab_backup() {
                   git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
               fi
 
+              # Backing up variables and issues
               _backup_variables "$project_id" "$clone_dir"
               _backup_issues "$project_id" "$clone_dir"
           done
@@ -246,6 +246,7 @@ gitlab_backup() {
       done
   }
 
+  local date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
   local backup_root_dir="/tmp/gitlab-backup_${group_id}_${date_and_time}/files"
   local zip_destination_dir="/tmp/gitlab-backup_${group_id}_${date_and_time}/zip"
   mkdir -p "${backup_root_dir}"
@@ -258,7 +259,7 @@ gitlab_backup() {
 
   if [ -n "$rclone_bucket" ]; then
     echo "RClone is enabled, uploading backup"
-    rclone copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_$group_id_${date_and_time}"
+    rclone copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
 }
 
