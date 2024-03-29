@@ -9,6 +9,37 @@ vault_secret_ad_item() {
   curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" -H "Content-Type: application/json" --data "{\"data\": ${updatedSecret}}" "${VAULT_ADDR}/v1/kv/data/${secretPath}"
 }
 
+function vault_secret_add_line() {
+  local secretPath=$1
+  local targetKey=$2
+  local newLineValue=$3
+
+  # Fetch the current secret from Vault
+  local currentSecret=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
+    "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq -r ".data.data | .[\"$targetKey\"]")
+
+  # Append new line to the existing value
+  local updatedValue="${currentSecret}
+${newLineValue}"
+
+  # Prepare the updated secret payload
+  local updatedSecret=$(jq -n --arg key "$targetKey" --arg value "$updatedValue" \
+    '{data: {($key): $value}}')
+
+  # Update the secret in Vault
+  local statusCode=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
+    -H "Content-Type: application/json" --data "$updatedSecret" \
+    "${VAULT_ADDR}/v1/kv/data/${secretPath}")
+
+  # Optional: Check if the operation was successful
+  if [[ "$statusCode" == "200" ]]; then
+    echo "Successfully updated the secret."
+  else
+    echo "Failed to update the secret. Status code: $statusCode"
+  fi
+}
+
+
 function git_add_file() {
   local GIT_URL=$1
   local GIT_REPO="${GIT_URL##*/}"
