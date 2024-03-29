@@ -344,7 +344,7 @@ function vault_delete_secrets() {
 
         echo "$SECRETS_LIST" | while read -r secret; do
             echo "Deleting secret: $group$secret"
-            curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/remp/$group$secret"
+            curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp/$group$secret"
         done
     done < <(echo "$GROUPS_LIST")
 
