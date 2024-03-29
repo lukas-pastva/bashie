@@ -8,7 +8,8 @@ vault_secret_ad_item() {
   local updatedSecret=$(echo ${currentSecret} | jq --arg key "${newKey}" --arg value "$newValue" '. + {($key): $value}')
   curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" -H "Content-Type: application/json" --data "{\"data\": ${updatedSecret}}" "${VAULT_ADDR}/v1/kv/data/${secretPath}"
 }
-function add_file_on_git() {
+
+function git_add_file() {
   local GIT_URL=$1
   local GIT_REPO="${GIT_URL##*/}"
   local THE_FILE=$2
@@ -25,7 +26,8 @@ function add_file_on_git() {
   git commit -m "Added by automation." > /dev/null 2>&1
   git push > /dev/null 2>&1
 }
-update_ingress_url() {
+
+k8s_ingress_update_url() {
   local namespace=$1
   local ingress_name=$2
   local new_domain=$3
@@ -37,7 +39,7 @@ update_ingress_url() {
   curl -sSk -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' -d "${updated_json}" "${api_server}${ingress_path}" > /dev/null 2>&1
 }
 
-function edit_file_on_git() {
+function git_edit_file() {
   local GIT_URL=$1
   local GIT_REPO="${GIT_URL##*/}"
   local ANCHOR=$2
@@ -81,13 +83,6 @@ gitlab_backup() {
       read group_id
       export group_id="${group_id}"
   fi
-  if [[ ${zip_destination_dir} == "" ]]; then
-      echo "Enter Destination directory into which the zip will be created: "
-      read zip_destination_dir
-      export zip_destination_dir="${zip_destination_dir}"
-  fi
-
-  local parent_path=$(pwd)
 
   _backup_variables() {
       local project_id=$1
@@ -137,8 +132,7 @@ gitlab_backup() {
       local group_id=$1
       local backup_dir=$2
       echo "Backing up CI/CD settings for group ID $group_id"
-      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "https://gitlab.com/api/v4/groups/$group_id/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
+      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "https://gitlab.com/api/v4/groups/$group_id/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
   }
 
   # Function to backup group issues
@@ -165,8 +159,6 @@ gitlab_backup() {
       local zip_destination_dir=$2  # The destination directory for the zip file
       local group_id=$3         # GitLab Group ID to include in the zip filename
 
-      mkdir -p "$zip_destination_dir"
-
       echo "Compressing backup directories into a single archive..."
       # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
       # The zip file is now created in the specified destination directory
@@ -174,7 +166,7 @@ gitlab_backup() {
 
       echo "Removing original backup directories..."
       # Find and delete the original directories but keep the zip file
-      find "$backup_root_dir" -mindepth 1 -maxdepth 1 ! -name "*.zip" -exec rm -rf {} +
+      rm -rf "$backup_root_dir"
 
       echo "Backup and cleanup process completed."
   }
@@ -256,11 +248,16 @@ gitlab_backup() {
       done
   }
 
-  _clone_recursive "$group_id" "$parent_path"
-  _zip_and_cleanup "$parent_path" "$zip_destination_dir" "$group_id"
+
+  local backup_root_dir="/tmp/gitlab-backup_$group_id_$(date +%Y-%m-%d_%H-%M-%S)/files"
+  local zip_destination_dir="/tmp/gitlab-backup_$group_id_$(date +%Y-%m-%d_%H-%M-%S)/zip"
+  mkdir -p "${backup_root_dir}"
+  mkdir -p "${zip_destination_dir}"
+  _clone_recursive "${group_id}" "${backup_root_dir}"
+  _zip_and_cleanup "${backup_root_dir}" ${zip_destination_dir} "$group_id"
 }
 
-update_gitlab_file() {
+gitlab_update_file() {
     project_id="$1"
     file_path="$2"
     branch_name="$3"
@@ -350,4 +347,13 @@ function vault_delete_secrets() {
 
     IFS=$OLD_IFS
     kill $PF_PID
+}
+
+function k(){
+  kubectl "$@"
+
+}
+
+function e(){
+  cd ~/Desktop/_envs
 }
