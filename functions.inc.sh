@@ -217,7 +217,6 @@ gitlab_backup() {
                   git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
               fi
 
-              # Backing up variables and issues
               _backup_variables "$project_id" "$clone_dir"
               _backup_issues "$project_id" "$clone_dir"
           done
