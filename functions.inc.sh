@@ -158,11 +158,12 @@ gitlab_backup() {
       local backup_root_dir=$1  # The root directory where all backups are stored
       local zip_destination_dir=$2  # The destination directory for the zip file
       local group_id=$3         # GitLab Group ID to include in the zip filename
+      local date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
 
       echo "Compressing backup directories into a single archive..."
       # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
       # The zip file is now created in the specified destination directory
-      zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "$backup_root_dir" -x "*.zip"
+      zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir" -x "*.zip"
 
       echo "Removing original backup directories..."
       # Find and delete the original directories but keep the zip file
@@ -246,8 +247,8 @@ gitlab_backup() {
       done
   }
 
-  local backup_root_dir="/tmp/gitlab-backup_${group_id}_$(date +%Y-%m-%d_%H-%M-%S)/files"
-  local zip_destination_dir="/tmp/gitlab-backup_${group_id}_$(date +%Y-%m-%d_%H-%M-%S)/zip"
+  local backup_root_dir="/tmp/gitlab-backup_${group_id}_${date_and_time}/files"
+  local zip_destination_dir="/tmp/gitlab-backup_${group_id}_${date_and_time}/zip"
   mkdir -p "${backup_root_dir}"
   mkdir -p "${zip_destination_dir}"
   _clone_recursive "${group_id}" "${backup_root_dir}"
@@ -258,7 +259,7 @@ gitlab_backup() {
 
   if [ -n "$rclone_bucket" ]; then
     echo "RClone is enabled, uploading backup"
-    rclone copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_$group_id_$(date +%Y-%m-%d_%H-%M-%S)"
+    rclone copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_$group_id_${date_and_time}"
   fi
 }
 
