@@ -170,7 +170,6 @@ gitlab_backup() {
 
   }
 
-
   # Recursive function to clone projects and handle subgroups, including variables, issues, CI/CD settings, and CI/CD variables backup
   _clone_recursive() {
       local current_group_id=$1
@@ -248,12 +247,12 @@ gitlab_backup() {
   }
 
 
-  local backup_root_dir="/tmp/gitlab-backup_$group_id_$(date +%Y-%m-%d_%H-%M-%S)/files"
-  local zip_destination_dir="/tmp/gitlab-backup_$group_id_$(date +%Y-%m-%d_%H-%M-%S)/zip"
+  local backup_root_dir="/tmp/gitlab-backup_${group_id}_$(date +%Y-%m-%d_%H-%M-%S)/files"
+  local zip_destination_dir="/tmp/gitlab-backup_${group_id}_$(date +%Y-%m-%d_%H-%M-%S)/zip"
   mkdir -p "${backup_root_dir}"
   mkdir -p "${zip_destination_dir}"
   _clone_recursive "${group_id}" "${backup_root_dir}"
-  _zip_and_cleanup "${backup_root_dir}" ${zip_destination_dir} "$group_id"
+  _zip_and_cleanup "${backup_root_dir}" ${zip_destination_dir} "${group_id}"
   echo "---------------------------------------------------------------------------------------------------------------"
   echo "Backup completed, zip stored in ${zip_destination_dir}/"
   echo "---------------------------------------------------------------------------------------------------------------"
