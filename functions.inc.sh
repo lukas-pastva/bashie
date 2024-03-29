@@ -168,7 +168,6 @@ gitlab_backup() {
       # Find and delete the original directories but keep the zip file
       rm -rf "$backup_root_dir"
 
-      echo "Backup and cleanup process completed."
   }
 
 
@@ -255,6 +254,9 @@ gitlab_backup() {
   mkdir -p "${zip_destination_dir}"
   _clone_recursive "${group_id}" "${backup_root_dir}"
   _zip_and_cleanup "${backup_root_dir}" ${zip_destination_dir} "$group_id"
+  echo "---------------------------------------------------------------------------------------------------------------"
+  echo "Backup completed, zip stored in ${zip_destination_dir}/"
+  echo "---------------------------------------------------------------------------------------------------------------"
 }
 
 gitlab_update_file() {
