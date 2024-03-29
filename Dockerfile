@@ -17,6 +17,7 @@ RUN apt-get update -qq && \
         msmtp \
         msmtp-mta \
         pcregrep \
+        rclone \
         vim \
         zip \
         s3cmd \

@@ -257,6 +257,11 @@ gitlab_backup() {
   echo "---------------------------------------------------------------------------------------------------------------"
   echo "Backup completed, zip stored in ${zip_destination_dir}/"
   echo "---------------------------------------------------------------------------------------------------------------"
+
+  if [ -n "$rclone_bucket" ]; then
+    echo "RClone is enabled, uploading backup"
+    rclone copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_$(date +%Y-%m-%d_%H-%M-%S).zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_$group_id_$(date +%Y-%m-%d_%H-%M-%S)"
+  fi
 }
 
 gitlab_update_file() {
