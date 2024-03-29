@@ -247,8 +247,8 @@ gitlab_backup() {
   }
 
   local date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
-  local backup_root_dir="/tmp/gitlab-backup_${group_id}_${date_and_time}/files"
-  local zip_destination_dir="/tmp/gitlab-backup_${group_id}_${date_and_time}/zip"
+  local backup_root_dir="/tmp/backup/files"
+  local zip_destination_dir="/tmp/backup/zip"
   mkdir -p "${backup_root_dir}"
   mkdir -p "${zip_destination_dir}"
   _clone_recursive "${group_id}" "${backup_root_dir}"
