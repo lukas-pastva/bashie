@@ -291,7 +291,6 @@ gitlab_backup() {
   if [ -n "$rclone_bucket" ]; then
     echo "RClone is enabled, uploading backup"
     rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
-    echo "rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}""
   fi
 }
 
