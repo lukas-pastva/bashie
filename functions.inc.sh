@@ -388,9 +388,30 @@ function vault_delete_secrets() {
 
 function k(){
   kubectl "$@"
-
 }
 
 function e(){
   cd ~/Desktop/_envs
 }
+
+echo_with_time() {
+  # Get current time in UTC in Z format
+  local current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+  # Add an empty line before the text
+  echo
+
+  # Check if the last character of the input is a newline
+  if [[ "$1" == $'\n' || "$1" == *$'\n' ]]; then
+    # If there's already a newline, just print the text with the timestamp and add one empty line after
+    echo -e "${current_time} $1"
+  else
+    # If there's no newline at the end, add the text with the timestamp and two empty lines after
+    echo -e "${current_time} $1\n"
+  fi
+}
+
+# Enable debugging if DEBUG environment variable is set
+if [ "$DEBUG" = "true" ]; then
+  set -x
+fi
