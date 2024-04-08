@@ -5,9 +5,6 @@ function vault_secret_get_item() {
   local key="$2"
   local RETURN_VALUE="false"
 
-
-  echo "executing: curl -s --header \"X-Vault-Token: $GLOBAL_VAULT_TOKEN\" \"$VAULT_ADDR/v1/kv/data/$secretPath\""
-
   local response=$(curl -s --header "X-Vault-Token: $GLOBAL_VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/$secretPath")
   local value=$(echo "$response" | jq -r ".data.data[\"$key\"]")
 
