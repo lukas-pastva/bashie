@@ -42,7 +42,7 @@ function vault_secret_item_check_if_exists(){
     return 0
   else
     # "Key '$key' does not exist in the secret at path '$secretPath'."
-    return 2
+    return 1
   fi
 }
 
