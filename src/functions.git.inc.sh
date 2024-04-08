@@ -1,44 +1,5 @@
 #!/bin/bash
 
-vault_secret_ad_item() {
-  local secretPath=$1
-  local newKey=$2
-  local newValue=$3
-  local currentSecret=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq '.data.data')
-  local updatedSecret=$(echo ${currentSecret} | jq --arg key "${newKey}" --arg value "$newValue" '. + {($key): $value}')
-  curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" -H "Content-Type: application/json" --data "{\"data\": ${updatedSecret}}" "${VAULT_ADDR}/v1/kv/data/${secretPath}"
-}
-
-function vault_secret_add_line() {
-  local secretPath=$1
-  local targetKey=$2
-  local newLineValue=$3
-
-  # Fetch the current secret from Vault
-  local currentSecret=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
-    "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq -r ".data.data | .[\"$targetKey\"]")
-
-  # Append new line to the existing value
-  local updatedValue="${currentSecret}
-${newLineValue}"
-
-  # Prepare the updated secret payload
-  local updatedSecret=$(jq -n --arg key "$targetKey" --arg value "$updatedValue" \
-    '{data: {($key): $value}}')
-
-  # Update the secret in Vault
-  local statusCode=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
-    -H "Content-Type: application/json" --data "$updatedSecret" \
-    "${VAULT_ADDR}/v1/kv/data/${secretPath}")
-
-  # Optional: Check if the operation was successful
-  if [[ "$statusCode" == "200" ]]; then
-    echo_with_time "Successfully updated the secret."
-  else
-    echo_with_time "Failed to update the secret. Status code: $statusCode"
-  fi
-}
-
 
 function git_add_file() {
   local GIT_URL=$1
@@ -58,17 +19,6 @@ function git_add_file() {
   git push > /dev/null 2>&1
 }
 
-k8s_ingress_update_url() {
-  local namespace=$1
-  local ingress_name=$2
-  local new_domain=$3
-  local api_server="https://${KUBERNETES_SERVICE_HOST}:${KUBERNETES_SERVICE_PORT}"
-  local token=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
-  local ingress_path="/apis/networking.k8s.io/v1/namespaces/${namespace}/ingresses/${ingress_name}"
-  local ingress_json=$(curl -sSk -H "Authorization: Bearer ${token}" "${api_server}${ingress_path}")
-  local updated_json=$(echo "${ingress_json}" | jq --arg new_domain "${new_domain}" '.spec.rules[0].host = $new_domain')
-  curl -sSk -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' -d "${updated_json}" "${api_server}${ingress_path}" > /dev/null 2>&1
-}
 
 function git_edit_file() {
   local GIT_URL=$1
@@ -102,7 +52,7 @@ function git_edit_file() {
 
 
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
-gitlab_backup() {
+function gitlab_backup() {
   if [[ ${gitlab_private_token} == "" ]]; then
       echo "Enter your GitLab Private Token: "
       read gitlab_private_token
@@ -294,7 +244,8 @@ gitlab_backup() {
   fi
 }
 
-gitlab_update_file() {
+
+function gitlab_update_file() {
     project_id="$1"
     file_path="$2"
     branch_name="$3"
@@ -322,96 +273,3 @@ gitlab_update_file() {
         }" > /dev/null 2>&1
 
 }
-
-function vault_delete_secrets() {
-    # Find the Vault pod and namespace
-    local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
-    local VAULT_POD=$(echo "$VAULT_POD_INFO" | cut -d' ' -f1)
-    local VAULT_NAMESPACE=$(echo "$VAULT_POD_INFO" | cut -d' ' -f2)
-
-    if [ -z "$VAULT_POD" ] || [ -z "$VAULT_NAMESPACE" ]; then
-        echo "Vault pod could not be found."
-        return
-    fi
-
-    # Setup port forwarding
-    kubectl port-forward -n "$VAULT_NAMESPACE" "$VAULT_POD" 8200:8200 &
-    local PF_PID=$!
-    sleep 2 # Wait for port forwarding to establish
-
-    # Prompt for Vault token
-    echo -n "Enter Vault Token: "
-    read -rs VAULT_TOKEN
-    echo "" # Move to a new line
-
-    # Set Vault address
-    local VAULT_ADDR="http://localhost:8200"
-
-    # List groups with the 'test-' prefix
-    local GROUPS_LIST=$(curl -s -X LIST --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp" | jq -r '.data.keys[]' | grep ^test-)
-
-    if [ -z "$GROUPS_LIST" ]; then
-        echo "No groups matching 'test-' prefix found."
-        kill $PF_PID
-        return
-    fi
-
-    # Save and change IFS to only split on newlines
-    OLD_IFS=$IFS
-    IFS=$'\n'
-
-    while read -r group; do
-        group="${group%/}/" # Ensure group ends with a slash
-
-        local SECRETS_LIST=$(curl -s -X LIST --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp/$group" | jq -r '.data.keys[]')
-
-        if [ -z "$SECRETS_LIST" ] || [ "$SECRETS_LIST" == "null" ]; then
-            echo "No secrets found in group $group"
-            continue
-        fi
-
-        echo "The following secrets will be deleted in group $group:"
-        echo "$SECRETS_LIST"
-
-        echo -n "Secrets from group $group above, will be now deleted, you have 10 seconds to cancel... "
-        sleep 10
-
-        echo "$SECRETS_LIST" | while read -r secret; do
-            echo "Deleting secret: $group$secret"
-            curl --request DELETE --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/metadata/remp/$group$secret"
-        done
-    done < <(echo "$GROUPS_LIST")
-
-    IFS=$OLD_IFS
-    kill $PF_PID
-}
-
-function k(){
-  kubectl "$@"
-}
-
-function e(){
-  cd ~/Desktop/_envs
-}
-
-function echo_with_time() {
-  # Get current time in UTC in Z format
-  local current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-
-  # Add an empty line before the text
-  echo
-
-  # Check if the last character of the input is a newline
-  if [[ "$1" == $'\n' || "$1" == *$'\n' ]]; then
-    # If there's already a newline, just print the text with the timestamp and add one empty line after
-    echo -e "${current_time} $1"
-  else
-    # If there's no newline at the end, add the text with the timestamp and two empty lines after
-    echo -e "${current_time} $1\n"
-  fi
-}
-
-# Enable debugging if DEBUG environment variable is set
-if [ "$DEBUG" = "true" ]; then
-  set -x
-fi
