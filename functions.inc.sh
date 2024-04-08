@@ -33,9 +33,9 @@ ${newLineValue}"
 
   # Optional: Check if the operation was successful
   if [[ "$statusCode" == "200" ]]; then
-    echo "Successfully updated the secret."
+    echo_with_time "Successfully updated the secret."
   else
-    echo "Failed to update the secret. Status code: $statusCode"
+    echo_with_time "Failed to update the secret. Status code: $statusCode"
   fi
 }
 
@@ -95,7 +95,7 @@ function git_edit_file() {
     git commit -m "Added by automation." > /dev/null 2>&1
     git push > /dev/null 2>&1
   else
-    echo "---> Contents already exist in the file. No changes made."
+    echo_with_time "Contents already exist in the file. No changes made."
   fi
   rm -rf /tmp/${GIT_REPO} || true
 }
@@ -394,7 +394,7 @@ function e(){
   cd ~/Desktop/_envs
 }
 
-echo_with_time() {
+function echo_with_time() {
   # Get current time in UTC in Z format
   local current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 

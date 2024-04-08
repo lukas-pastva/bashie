@@ -1,8 +1,8 @@
 #!/bin/bash
 
-echo ""
-echo "--------------------------------------------------------"
-echo "Parsing JSON_DATA to environment variables..."
+source /functions.inc.sh
+
+echo_with_time "Parsing JSON_DATA to environment variables..."
 # Only proceed if JSON_DATA is not empty
 if [[ -n "${JSON_DATA}" ]]; then
   # Parsing JSON_DATA and prefixing variable names with "var_"
@@ -10,22 +10,18 @@ if [[ -n "${JSON_DATA}" ]]; then
     # Using eval to handle complex scenarios safely
     eval "export var_${name}='${value}'"
   done < <(echo "${JSON_DATA}" | jq -r 'to_entries | map("\(.key)=\(.value | tostring)") | .[]')
-  echo "Environment variables are set."
+  echo_with_time "Environment variables are set."
 else
-  echo "JSON_DATA is empty. Skipping setting environment variables."
+  echo_with_time "JSON_DATA is empty. Skipping setting environment variables."
 fi
-echo "--------------------------------------------------------"
 
 
-echo ""
-echo "--------------------------------------------------------"
-echo "Executing BASH_DATA script..."
+echo_with_time "Executing BASH_DATA script..."
 # Only proceed if BASH_DATA is not empty
 if [[ -n "${BASH_DATA}" ]]; then
   # Directly execute BASH_DATA content
   bash -c "${BASH_DATA}"
-  echo "BASH_DATA script executed."
+  echo_with_time "BASH_DATA script executed."
 else
-  echo "BASH_DATA is empty. Skipping script execution."
+  echo_with_time "BASH_DATA is empty. Skipping script execution."
 fi
-echo "--------------------------------------------------------"
