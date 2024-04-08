@@ -1,6 +1,6 @@
 #!/bin/bash
 
-vault_secret_get_item() {
+function vault_secret_get_item() {
   local secretPath="$1"
   local key="$2"
 
@@ -9,7 +9,6 @@ vault_secret_get_item() {
   # Check if there was an error in the response
   if echo "$response" | grep -q "errors"; then
     echo "false"
-    return 1
   fi
 
   # Extract the value associated with the key, if it exists
