@@ -3,16 +3,12 @@
 function vault_secret_get_item() {
   local secretPath="$1"
   local key="$2"
-  local response=$(curl -s --header "X-Vault-Token: $GLOBAL_VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/$secretPath")
   local RETURN_VALUE="false"
 
-  # Extract the value associated with the key, if it exists
+  local response=$(curl -s --header "X-Vault-Token: $GLOBAL_VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/$secretPath")
   local value=$(echo "$response" | jq -r ".data.data[\"$key\"]")
 
-  # Check if the value is null or not set
-  if [[ "$value" == "null" ]] || [[ -z "$value" ]]; then
-    RETURN_VALUE="false"
-  else
+  if [[ "$value" != "null" ]] && [[ -n "$value" ]]; then
     RETURN_VALUE="$value"
   fi
   echo "${RETURN_VALUE}"
