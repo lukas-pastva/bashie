@@ -1,6 +1,6 @@
 #!/bin/bash
 
-vault_secret_ad_item() {
+function vault_secret_add_item() {
   local secretPath=$1
   local newKey=$2
   local newValue=$3
@@ -9,7 +9,7 @@ vault_secret_ad_item() {
   curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" -H "Content-Type: application/json" --data "{\"data\": ${updatedSecret}}" "${VAULT_ADDR}/v1/kv/data/${secretPath}"
 }
 
-function vault_secret_add_line() {
+function vault_secret_item_add_line() {
   local secretPath=$1
   local targetKey=$2
   local newLineValue=$3

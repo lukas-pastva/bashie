@@ -271,5 +271,4 @@ function gitlab_update_file() {
             \"content\": $json_safe_contents,
             \"commit_message\": \"${commit_message}\"
         }" > /dev/null 2>&1
-
 }
