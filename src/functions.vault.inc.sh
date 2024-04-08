@@ -3,23 +3,19 @@
 function vault_secret_get_item() {
   local secretPath="$1"
   local key="$2"
-
   local response=$(curl -s --header "X-Vault-Token: $GLOBAL_VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/$secretPath")
-
-  # Check if there was an error in the response
-  if echo "$response" | grep -q "errors"; then
-    echo "false"
-  fi
+  local RETURN_VALUE="false"
 
   # Extract the value associated with the key, if it exists
   local value=$(echo "$response" | jq -r ".data.data[\"$key\"]")
 
   # Check if the value is null or not set
   if [[ "$value" == "null" ]] || [[ -z "$value" ]]; then
-    echo "false"
+    RETURN_VALUE="false"
   else
-    echo "$value"
+    RETURN_VALUE="$value"
   fi
+  echo "${RETURN_VALUE}"
 }
 
 function vault_secret_item_check_if_exists(){
