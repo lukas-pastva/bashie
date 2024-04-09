@@ -1,7 +1,7 @@
 FROM ubuntu:latest
 
 RUN apt-get update -qq && \
-    apt-get install -y -qq --no-install-recommends -o=Dpkg::Use-Pty=0 \
+    apt-get install -y -qq --no-install-recommends \
         bash \
         jq \
         curl \
@@ -28,12 +28,10 @@ RUN apt-get update -qq && \
         php-soap \
         php-xml \
         php-gd \
-        libc-client-dev \
-        libkrb5-dev \
-    && apt-get clean && \
-    rm -rf /var/lib/apt/lists/* \
-    && docker-php-ext-configure imap --with-kerberos --with-imap-ssl \
-    && docker-php-ext-install imap
+        php-imap && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/*
+
 
 
 # Download and Install Terraform
