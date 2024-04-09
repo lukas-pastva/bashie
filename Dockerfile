@@ -24,7 +24,9 @@ RUN apt-get update -qq && \
         s3fs \
         php-cli \
         php-zip \
-        php-curl && \
+        php-curl \
+        php-soap \
+        php-xml && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
