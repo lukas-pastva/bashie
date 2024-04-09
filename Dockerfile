@@ -32,9 +32,12 @@ RUN apt-get update -qq && \
         php-soap \
         php-xml \
         php-gd \
-        php-imap && \
+        php-imap \
+        php-bcmath && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+ENV DEBIAN_FRONTEND=
 
 
 # Download and Install Terraform
