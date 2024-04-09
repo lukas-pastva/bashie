@@ -23,7 +23,8 @@ RUN apt-get update -qq && \
         s3cmd \
         s3fs \
         php-cli \
-        php-zip && \
+        php-zip \
+        php-curl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
