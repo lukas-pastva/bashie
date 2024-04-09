@@ -21,7 +21,9 @@ RUN apt-get update -qq && \
         vim \
         zip \
         s3cmd \
-        s3fs && \
+        s3fs \
+        php-cli \
+        php-zip && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -34,6 +36,12 @@ RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform
 # Install yq
 RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && \
     chmod +x /usr/bin/yq
+
+# COMPOSER
+ENV COMPOSER_HOME /composer
+ENV PATH /composer/vendor/bin:$PATH
+ENV COMPOSER_ALLOW_SUPERUSER 1
+RUN curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 WORKDIR /tmp/app
 COPY src/ /
