@@ -27,9 +27,14 @@ RUN apt-get update -qq && \
         php-curl \
         php-soap \
         php-xml \
-        php-gd && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+        php-gd \
+        libc-client-dev \
+        libkrb5-dev \
+    && apt-get clean && \
+    rm -rf /var/lib/apt/lists/* \
+    && docker-php-ext-configure imap --with-kerberos --with-imap-ssl \
+    && docker-php-ext-install imap
+
 
 # Download and Install Terraform
 ARG TERRAFORM_VERSION="1.7.4"
