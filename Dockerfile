@@ -26,7 +26,8 @@ RUN apt-get update -qq && \
         php-zip \
         php-curl \
         php-soap \
-        php-xml && \
+        php-xml \
+        php-gd && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
