@@ -1,5 +1,9 @@
 FROM ubuntu:latest
 
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=Etc/UTC
+
+
 RUN apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
         bash \
@@ -31,7 +35,6 @@ RUN apt-get update -qq && \
         php-imap && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
 
 
 # Download and Install Terraform
