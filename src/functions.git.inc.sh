@@ -273,3 +273,4 @@ function gitlab_update_file() {
         }" # > /dev/null 2>&1
 }
 
+
