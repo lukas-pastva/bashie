@@ -270,5 +270,5 @@ function gitlab_update_file() {
             \"author_name\": \"$GLOBAL_GIT_USER\",
             \"content\": $json_safe_contents,
             \"commit_message\": \"${commit_message}\"
-        }" > /dev/null 2>&1
+        }" # > /dev/null 2>&1
 }
