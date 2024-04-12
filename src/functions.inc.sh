@@ -19,6 +19,30 @@ function k(){
   kubectl "$@"
 }
 
+function kdeleteall() {
+    local namespace="$1"
+
+    if [ -z "$namespace" ]; then
+        echo "Usage: kdeleteall <namespace>"
+        return 1
+    fi
+
+    echo "Are you sure you want to delete all resources in namespace '$namespace'? [y/N]"
+    read confirmation
+    if [[ "$confirmation" =~ ^[Yy]$ ]]; then
+        # Get all types of resources (including CRDs that are namespace-scoped)
+        kubectl api-resources --verbs=delete --namespaced=true -o name | while read -r resource; do
+            # Attempt to delete each resource type individually
+            echo "Deleting all $resource in $namespace..."
+            kubectl delete "$resource" --all -n "$namespace"
+        done
+
+        echo "All possible deletable resources in namespace '$namespace' have been processed."
+    else
+        echo "Deletion cancelled."
+    fi
+}
+
 function e(){
   cd ~/Desktop/_envs
 }
