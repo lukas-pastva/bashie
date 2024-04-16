@@ -139,20 +139,19 @@ function vault_secrets_delete_with_test_prefix() {
     kill $PF_PID
 }
 
-
 function vault_backup() {
     # Helper function to recursively fetch secrets
     function _fetch_secrets_recursively() {
-        local path="$1"
-        local secrets_list=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/secret/metadata/$path | jq -r '.data.keys[]')
+        local vault_path="$1"
+        local secrets_list=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/secret/metadata/$vault_path | jq -r '.data.keys[]')
 
         for secret in $secrets_list; do
             if [[ "$secret" == */ ]]; then
                 # It's a folder, recurse into it
-                _fetch_secrets_recursively "${path}${secret}"
+                _fetch_secrets_recursively "${vault_path}${secret}"
             else
                 # It's an actual secret, fetch and save it
-                local full_path="${path}${secret}"
+                local full_path="${vault_path}${secret}"
                 local secret_data=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/secret/data/$full_path)
                 echo "\"$full_path\": $secret_data," >> ./"$FILENAME"
             fi
@@ -177,7 +176,7 @@ function vault_backup() {
         local FILENAME="k8s_tokens_backup_${TIMESTAMP}.yaml"
         echo "Backing up Kubernetes secrets with names ending in '-token' into $FILENAME..."
 
-        echo "# backup of k8s secrets ending with -token" > "$FILENAME"
+        echo "# backup of k8s secrets ending with '-token'" > "$FILENAME"
 
         IFS=$' ' # Change the Internal Field Separator to newline
         local namespaces=($(kubectl get ns -o jsonpath="{.items[*].metadata.name}"))
@@ -229,4 +228,3 @@ function vault_backup() {
     kill $PF_PID
     echo "Backup completed. Secrets saved to ./$FILENAME."
 }
-
