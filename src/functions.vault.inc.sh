@@ -138,3 +138,64 @@ function vault_secrets_delete_with_test_prefix() {
     IFS=$OLD_IFS
     kill $PF_PID
 }
+
+function vault_backup() {
+    # Find the Vault pod across all namespaces using the consistent label
+    local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
+    local VAULT_POD=$(echo $VAULT_POD_INFO | cut -d' ' -f1)
+    local VAULT_NAMESPACE=$(echo $VAULT_POD_INFO | cut -d' ' -f2)
+
+    if [ -z "$VAULT_POD" ] || [ -z "$VAULT_NAMESPACE" ]; then
+        echo "Vault pod could not be found."
+        return
+    fi
+
+    kubectl port-forward -n "$VAULT_NAMESPACE" "$VAULT_POD" 8200:8200 &
+    local PF_PID=$!
+    sleep 2
+
+    echo -n "Enter Vault Token: "
+    read -rs VAULT_TOKEN
+    echo "" # Move to a new line after input
+
+    local VAULT_ADDR="http://localhost:8200"
+    local TIMESTAMP=$(date +%Y-%m-%d_T%H-%M-%S)
+    local FILENAME="vault_secrets_backup_${TIMESTAMP}.json"
+
+    echo "Starting backup..." > ./"$FILENAME"
+
+    fetchSecretsRecursively ""
+    fetchAndSavePolicies
+
+    # Now calling the function to backup Kubernetes tokens
+    vault_backup_tokens_k8s
+
+    # lpass add --non-interactive --sync=now "Vault Backup/${TIMESTAMP}" --note-type="Generic Note" < ./"$FILENAME"
+
+    kill $PF_PID
+
+    echo "Backup completed. Secrets saved to ./$FILENAME."
+}
+
+function vault_backup_tokens_k8s() {
+    local TIMESTAMP=$(date +%Y-%m-%d_T%H-%M-%S)
+    local FILENAME="k8s_tokens_backup_${TIMESTAMP}.yaml"
+    echo "Backing up Kubernetes secrets with names ending in '-token' into $FILENAME..."
+
+    echo "# backup of of k8s secrets ending with -token" > "$FILENAME"
+
+    IFS=$' ' # Change the Internal Field Separator to newline
+    local namespaces=($(kubectl get ns -o jsonpath="{.items[*].metadata.name}"))
+
+    for ns in "${namespaces[@]}"; do
+        echo "Namespace: $ns"
+        kubectl get secrets -n "$ns" -o json | jq -r '.items[] | select(.metadata.name | endswith("-token")) | .metadata.name' | while read secret; do
+            echo "Backing up secret $secret from namespace $ns to $FILENAME"
+            # Append secret data to the backup file in YAML format, separated by ---
+            kubectl get secret "$secret" -n "$ns" -o yaml >> "$FILENAME"
+            echo "---" >> "$FILENAME"
+        done
+    done
+
+    echo "Kubernetes secrets backup completed. Secrets saved to ./$FILENAME."
+}
