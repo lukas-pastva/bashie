@@ -77,21 +77,6 @@ ${newLineValue}"
 }
 
 function vault_secrets_delete_with_test_prefix() {
-    # Find the Vault pod and namespace
-    local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
-    local VAULT_POD=$(echo "$VAULT_POD_INFO" | cut -d' ' -f1)
-    local VAULT_NAMESPACE=$(echo "$VAULT_POD_INFO" | cut -d' ' -f2)
-
-    if [ -z "$VAULT_POD" ] || [ -z "$VAULT_NAMESPACE" ]; then
-        echo "Vault pod could not be found."
-        return
-    fi
-
-    # Setup port forwarding
-    kubectl port-forward -n "$VAULT_NAMESPACE" "$VAULT_POD" 8200:8200 &
-    local PF_PID=$!
-    sleep 2 # Wait for port forwarding to establish
-
     # Prompt for Vault token
     echo -n "Enter Vault Token: "
     read -rs VAULT_TOKEN
@@ -136,7 +121,6 @@ function vault_secrets_delete_with_test_prefix() {
     done < <(echo "$GROUPS_LIST")
 
     IFS=$OLD_IFS
-    kill $PF_PID
 }
 
 
