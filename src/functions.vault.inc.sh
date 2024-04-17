@@ -140,43 +140,61 @@ function vault_secrets_delete_with_test_prefix() {
 }
 
 function vault_backup() {
-    # Helper function to recursively fetch secrets
+
     function _fetch_secrets_recursively() {
         local vault_path="$1"
-        local secrets_list=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/secret/metadata/$vault_path | jq -r '.data.keys[]')
+        # Remove leading and trailing slashes for consistency
+        vault_path="${vault_path#/}"  # Removes leading slash
+        vault_path="${vault_path%/}"  # Removes trailing slash
 
-        for secret in $secrets_list; do
-            if [[ "$secret" == */ ]]; then
-                # It's a folder, recurse into it
-                _fetch_secrets_recursively "${vault_path}${secret}"
+        # Perform the API call to list directories or secrets
+        local metadata_response=$(curl -s --header "X-Vault-Token: $VAULT_TOKEN" --request LIST "$VAULT_ADDR/v1/kv/metadata/$vault_path")
+        # Check for errors in the metadata response
+        if echo "$metadata_response" | jq -e '.errors | length > 0' >/dev/null; then
+            echo "Error fetching metadata from path: $vault_path"
+            echo "Response was: $metadata_response"
+            return 1
+        fi
+
+        # Extract the list of keys; check first if there are any keys
+        local keys_exist=$(echo "$metadata_response" | jq -e '.data.keys != null' >/dev/null)
+        if [ "$keys_exist" = false ]; then
+            echo "No directories or secrets found at path: $vault_path"
+            return 1
+        fi
+
+        echo "$metadata_response" | jq -r '.data.keys[]' | while IFS= read -r key; do
+            local new_path="$vault_path/$key"
+            if [[ "$key" == */ ]]; then
+                # It's a directory, recurse into it
+                _fetch_secrets_recursively "$new_path"
             else
-                # It's an actual secret, fetch and save it
-                local full_path="${vault_path}${secret}"
-                local secret_data=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/secret/data/$full_path)
-                echo "\"$full_path\": $secret_data," >> ./"$FILENAME"
+              # It's a secret key, fetch the secret data
+              local secret_data=$(curl -s --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/$new_path" | jq -e '.data.data')
+              # Assuming data is always present, directly append it to your file
+              echo "\"$new_path\": $secret_data," >> ./"FILENAME_SECRETS"
             fi
         done
     }
 
-    # Helper function to fetch and save policies
     function _fetch_and_save_policies() {
-        local policies=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/sys/policy | jq -r '.data.keys[]')
-
-        echo "\"policies\": {" >> ./"$FILENAME"
-        for policy in $policies; do
-            local policy_data=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" $VAULT_ADDR/v1/sys/policy/$policy)
-            echo "\"$policy\": $policy_data," >> ./"$FILENAME"
+        # Retrieve list of policies
+        curl --silent --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/sys/policy" | \
+        jq -r '.data.keys[]' | while IFS= read -r policy; do
+            # Fetch individual policy data
+            local policy_data=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/sys/policy/$policy" | jq -c '.data.rules')
+            echo "\"$policy\": $policy_data" >> "FILENAME_POLICIES"
         done
-        echo "}," >> ./"$FILENAME"
+
+        # Wrap the policies in a JSON object
+        sed -i '1s/^/{ "policies": {/' "FILENAME_POLICIES"
+        echo "}}" >> "FILENAME_POLICIES"
     }
 
     # Helper function to backup Kubernetes tokens
     function _vault_backup_tokens_k8s() {
         local TIMESTAMP=$(date +%Y-%m-%d_T%H-%M-%S)
-        local FILENAME="k8s_tokens_backup_${TIMESTAMP}.yaml"
-        echo "Backing up Kubernetes secrets with names ending in '-token' into $FILENAME..."
-
-        echo "# backup of k8s secrets ending with '-token'" > "$FILENAME"
+        echo "Backing up Kubernetes secrets with names ending in '-token' into FILENAME_TOKENS..."
 
         IFS=$' ' # Change the Internal Field Separator to newline
         local namespaces=($(kubectl get ns -o jsonpath="{.items[*].metadata.name}"))
@@ -184,39 +202,26 @@ function vault_backup() {
         for ns in "${namespaces[@]}"; do
             echo "Namespace: $ns"
             kubectl get secrets -n "$ns" -o json | jq -r '.items[] | select(.metadata.name | endswith("-token")) | .metadata.name' | while read secret; do
-                echo "Backing up secret $secret from namespace $ns to $FILENAME"
                 # Append secret data to the backup file in YAML format, separated by ---
-                kubectl get secret "$secret" -n "$ns" -o yaml >> "$FILENAME"
-                echo "---" >> "$FILENAME"
+                kubectl get secret "$secret" -n "$ns" -o yaml >> "FILENAME_TOKENS"
+                echo "---" >> "FILENAME_TOKENS"
             done
         done
 
         echo "Kubernetes secrets backup completed. Secrets saved to ./$FILENAME."
     }
 
-    # Main logic starts here
-    local VAULT_POD_INFO=$(kubectl get pods --all-namespaces -l app.kubernetes.io/name=vault -o jsonpath="{.items[0].metadata.name} {.items[0].metadata.namespace}")
-    local VAULT_POD=$(echo $VAULT_POD_INFO | cut -d' ' -f1)
-    local VAULT_NAMESPACE=$(echo $VAULT_POD_INFO | cut -d' ' -f2)
-
-    if [ -z "$VAULT_POD" ] || [ -z "$VAULT_NAMESPACE" ]; then
-        echo "Vault pod could not be found."
-        return
-    fi
-
-    kubectl port-forward -n "$VAULT_NAMESPACE" "$VAULT_POD" 8200:8200 &
-    local PF_PID=$!
-    sleep 2
-
-    echo -n "Enter Vault Token: "
+    echo -n "Enter Vault Token (will be hidden): "
     read -rs VAULT_TOKEN
-    echo "" # Move to a new line after input
+    echo ""
 
     local VAULT_ADDR="http://localhost:8200"
     local TIMESTAMP=$(date +%Y-%m-%d_T%H-%M-%S)
-    local FILENAME="vault_secrets_backup_${TIMESTAMP}.json"
+    local FILENAME_SECRETS="vault_secrets_backup_${TIMESTAMP}.json"
+    local FILENAME_POLICIES="vault_policies_backup_${TIMESTAMP}.json"
+    local FILENAME_TOKENS="k8s_tokens_backup_${TIMESTAMP}.yaml"
 
-    echo "Starting backup..." > ./"$FILENAME"
+    echo "Starting backup, this will take time..."
 
     _fetch_secrets_recursively ""
     _fetch_and_save_policies
@@ -225,6 +230,5 @@ function vault_backup() {
     # Optional: Uncomment to sync with LastPass (if configured)
     # lpass add --non-interactive --sync=now "Vault Backup/${TIMESTAMP}" --note-type="Generic Note" < ./"$FILENAME"
 
-    kill $PF_PID
-    echo "Backup completed. Secrets saved to ./$FILENAME."
+    echo "Backup completed."
 }
