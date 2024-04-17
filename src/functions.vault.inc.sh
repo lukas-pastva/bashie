@@ -123,7 +123,6 @@ function vault_secrets_delete_with_test_prefix() {
     IFS=$OLD_IFS
 }
 
-
 function vault_backup() {
 
     function _fetch_secrets_recursively() {
@@ -170,10 +169,6 @@ function vault_backup() {
             local policy_data=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/sys/policy/$policy" | jq -c '.data.rules')
             echo "\"$policy\": $policy_data" >> "$FILENAME_POLICIES"
         done
-
-        # Wrap the policies in a JSON object
-        sed -i '1s/^/{ "policies": {/' "$FILENAME_POLICIES"
-        echo "}}" >> "$FILENAME_POLICIES"
     }
 
     # Helper function to backup Kubernetes tokens
@@ -185,15 +180,12 @@ function vault_backup() {
         local namespaces=($(kubectl get ns -o jsonpath="{.items[*].metadata.name}"))
 
         for ns in "${namespaces[@]}"; do
-            echo "Namespace: $ns"
             kubectl get secrets -n "$ns" -o json | jq -r '.items[] | select(.metadata.name | endswith("-token")) | .metadata.name' | while read secret; do
                 # Append secret data to the backup file in YAML format, separated by ---
                 kubectl get secret "$secret" -n "$ns" -o yaml >> "$FILENAME_TOKENS"
                 echo "---" >> "$FILENAME_TOKENS"
             done
         done
-
-        echo "Kubernetes secrets backup completed. Secrets saved to ./$FILENAME."
     }
 
     echo -n "Enter Vault Token (will be hidden): "
