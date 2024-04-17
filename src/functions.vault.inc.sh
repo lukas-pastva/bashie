@@ -139,6 +139,7 @@ function vault_secrets_delete_with_test_prefix() {
     kill $PF_PID
 }
 
+
 function vault_backup() {
 
     function _fetch_secrets_recursively() {
@@ -172,7 +173,7 @@ function vault_backup() {
               # It's a secret key, fetch the secret data
               local secret_data=$(curl -s --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/kv/data/$new_path" | jq -e '.data.data')
               # Assuming data is always present, directly append it to your file
-              echo "\"$new_path\": $secret_data," >> ./"FILENAME_SECRETS"
+              echo "\"$new_path\": $secret_data," >> ./"$FILENAME_SECRETS"
             fi
         done
     }
@@ -183,18 +184,18 @@ function vault_backup() {
         jq -r '.data.keys[]' | while IFS= read -r policy; do
             # Fetch individual policy data
             local policy_data=$(curl --silent --header "X-Vault-Token: $VAULT_TOKEN" "$VAULT_ADDR/v1/sys/policy/$policy" | jq -c '.data.rules')
-            echo "\"$policy\": $policy_data" >> "FILENAME_POLICIES"
+            echo "\"$policy\": $policy_data" >> "$FILENAME_POLICIES"
         done
 
         # Wrap the policies in a JSON object
-        sed -i '1s/^/{ "policies": {/' "FILENAME_POLICIES"
-        echo "}}" >> "FILENAME_POLICIES"
+        sed -i '1s/^/{ "policies": {/' "$FILENAME_POLICIES"
+        echo "}}" >> "$FILENAME_POLICIES"
     }
 
     # Helper function to backup Kubernetes tokens
     function _vault_backup_tokens_k8s() {
         local TIMESTAMP=$(date +%Y-%m-%d_T%H-%M-%S)
-        echo "Backing up Kubernetes secrets with names ending in '-token' into FILENAME_TOKENS..."
+        echo "Backing up Kubernetes secrets with names ending in '-token' into $FILENAME_TOKENS..."
 
         IFS=$' ' # Change the Internal Field Separator to newline
         local namespaces=($(kubectl get ns -o jsonpath="{.items[*].metadata.name}"))
@@ -203,8 +204,8 @@ function vault_backup() {
             echo "Namespace: $ns"
             kubectl get secrets -n "$ns" -o json | jq -r '.items[] | select(.metadata.name | endswith("-token")) | .metadata.name' | while read secret; do
                 # Append secret data to the backup file in YAML format, separated by ---
-                kubectl get secret "$secret" -n "$ns" -o yaml >> "FILENAME_TOKENS"
-                echo "---" >> "FILENAME_TOKENS"
+                kubectl get secret "$secret" -n "$ns" -o yaml >> "$FILENAME_TOKENS"
+                echo "---" >> "$FILENAME_TOKENS"
             done
         done
 
