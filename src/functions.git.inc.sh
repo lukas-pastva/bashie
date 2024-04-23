@@ -272,4 +272,3 @@ function gitlab_update_file() {
             \"commit_message\": \"${commit_message}\"
         }" # > /dev/null 2>&1
 }
-
