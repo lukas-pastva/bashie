@@ -3,6 +3,12 @@
 source /functions.git.inc.sh || true
 source /functions.vault.inc.sh || true
 
+# Function to check if a variable is a number
+function is_number() {
+  [[ $1 =~ ^[0-9]+$ ]]
+}
+
+
 function k8s_ingress_update_url() {
   local namespace=$1
   local ingress_name=$2

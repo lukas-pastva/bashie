@@ -69,9 +69,7 @@ ${newLineValue}"
     "${VAULT_ADDR}/v1/kv/data/${secretPath}")
 
   # Optional: Check if the operation was successful
-  if [[ "$statusCode" == "200" ]]; then
-    echo_with_time "Successfully updated the secret."
-  else
+  if [[ "$statusCode" != "200" ]]; then
     echo_with_time "Failed to update the secret. Status code: $statusCode"
   fi
 }
