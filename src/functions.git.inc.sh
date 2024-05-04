@@ -152,20 +152,20 @@ function gitlab_backup() {
 
   # Function to backup Wiki repositories of a project
   _backup_wikis() {
-      local project_id=$1
-      local backup_dir=$2
-      echo "Backing up Wiki for project ID $project_id"
-      local wiki_clone_url=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "https://gitlab.com/api/v4/projects/$project_id/wikis" | jq -r '.http_url_to_repo')
-      if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
-          local modified_wiki_url=$(echo "$wiki_clone_url" | sed "s|https://|https://oauth2:$gitlab_private_token@|")
-          local wiki_dir="${backup_dir}/wiki"
-          mkdir -p "$wiki_dir"
-          git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
-          echo "Wiki cloned to $wiki_dir"
-      else
-          echo "No Wiki found for project ID $project_id."
-      fi
+    local project_id=$1
+    local backup_dir=$2
+    echo "Backing up Wiki for project ID $project_id"
+    local wiki_clone_url=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+        "https://gitlab.com/api/v4/projects/$project_id/wikis" | jq -r '.http_url_to_repo')
+    if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
+        local modified_wiki_url=$(echo "$wiki_clone_url" | sed "s|https://|https://oauth2:$gitlab_private_token@|")
+        local wiki_dir="${backup_dir}/wiki"
+        mkdir -p "$wiki_dir"
+        git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
+        echo "Wiki cloned to $wiki_dir"
+    else
+        echo "No Wiki found for project ID $project_id."
+    fi
   }
 
   # Function to backup Snippets for a project
