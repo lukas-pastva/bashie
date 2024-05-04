@@ -54,66 +54,66 @@ function git_edit_file() {
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
   if [[ ${gitlab_private_token} == "" ]]; then
-      echo "Enter your GitLab Private Token: "
-      read gitlab_private_token
-      export gitlab_private_token="${gitlab_private_token}"
+    echo "Enter your GitLab Private Token: "
+    read gitlab_private_token
+    export gitlab_private_token="${gitlab_private_token}"
   fi
 
   if [[ ${group_id} == "" ]]; then
-      echo "Enter your GitLab Group ID: "
-      read group_id
-      export group_id="${group_id}"
+    echo "Enter your GitLab Group ID: "
+    read group_id
+    export group_id="${group_id}"
   fi
 
   _backup_variables() {
-      local project_id=$1
-      local backup_dir=$2
-      echo "Backing up variables for project ID $project_id"
-      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "https://gitlab.com/api/v4/projects/$project_id/variables" > "$backup_dir/variables.json"
+    local project_id=$1
+    local backup_dir=$2
+    echo "Backing up variables for project ID $project_id"
+    curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+        "https://gitlab.com/api/v4/projects/$project_id/variables" > "$backup_dir/variables.json"
   }
 
   # Function to backup project issues and comments
   _backup_issues() {
-      local project_id=$1
-      local backup_dir=$2
-      echo "Backing up issues and comments for project ID $project_id"
+    local project_id=$1
+    local backup_dir=$2
+    echo "Backing up issues and comments for project ID $project_id"
 
-      # Fetch issues for the project
-      local issues_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "https://gitlab.com/api/v4/projects/$project_id/issues?with_labels_details=true&include_subscribed=true&per_page=100")
+    # Fetch issues for the project
+    local issues_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+        "https://gitlab.com/api/v4/projects/$project_id/issues?with_labels_details=true&include_subscribed=true&per_page=100")
 
-      # Check if there are issues available
-      if [[ -z "$issues_response" || "$issues_response" == "[]" ]]; then
-          echo "No issues found for project ID $project_id."
-          return
+    # Check if there are issues available
+    if [[ -z "$issues_response" || "$issues_response" == "[]" ]]; then
+        echo "No issues found for project ID $project_id."
+        return
+    fi
+
+    # Iterate through each issue and fetch its comments
+    echo "$issues_response" | jq -c '.[]' | while IFS= read -r issue; do
+      local issue_iid=$(echo "$issue" | jq -r '.iid')
+
+      # Fetch comments for the issue
+      local issue_comments_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+          "https://gitlab.com/api/v4/projects/$project_id/issues/$issue_iid/notes")
+
+      # Check if comments were fetched successfully
+      if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
+        # Save comments to a file
+        echo "$issue_comments_response" > "$backup_dir/issue_${issue_iid}_comments.json"
+      else
+        echo "No comments found for issue IID $issue_iid in project ID $project_id."
       fi
-
-      # Iterate through each issue and fetch its comments
-      echo "$issues_response" | jq -c '.[]' | while IFS= read -r issue; do
-          local issue_iid=$(echo "$issue" | jq -r '.iid')
-
-          # Fetch comments for the issue
-          local issue_comments_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-              "https://gitlab.com/api/v4/projects/$project_id/issues/$issue_iid/notes")
-
-          # Check if comments were fetched successfully
-          if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
-              # Save comments to a file
-              echo "$issue_comments_response" > "$backup_dir/issue_${issue_iid}_comments.json"
-          else
-              echo "No comments found for issue IID $issue_iid in project ID $project_id."
-          fi
-      done
+    done
 
   }
 
   # Function to backup CI/CD settings for a group
   _backup_cicd_settings() {
-      local group_id=$1
-      local backup_dir=$2
-      echo "Backing up CI/CD settings for group ID ${group_id}"
-      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "https://gitlab.com/api/v4/groups/${group_id}/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
+    local group_id=$1
+    local backup_dir=$2
+    echo "Backing up CI/CD settings for group ID ${group_id}"
+    curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "https://gitlab.com/api/v4/groups/${group_id}/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
   }
 
   # Function to backup group issues
@@ -136,19 +136,18 @@ function gitlab_backup() {
 
   # Function to zip and clean up the backup directories
   _zip_and_cleanup() {
-      local backup_root_dir=$1  # The root directory where all backups are stored
-      local zip_destination_dir=$2  # The destination directory for the zip file
-      local group_id=$3         # GitLab Group ID to include in the zip filename
+    local backup_root_dir=$1  # The root directory where all backups are stored
+    local zip_destination_dir=$2  # The destination directory for the zip file
+    local group_id=$3         # GitLab Group ID to include in the zip filename
 
-      echo "Compressing backup directories into a single archive..."
-      # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
-      # The zip file is now created in the specified destination directory
-      zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir" -x "*.zip"
+    echo "Compressing backup directories into a single archive..."
+    # Creating a ZIP file for the entire backup directory, including the Group ID in the filename
+    # The zip file is now created in the specified destination directory
+    zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir" -x "*.zip"
 
-      echo "Removing original backup directories..."
-      # Find and delete the original directories but keep the zip file
-      rm -rf "$backup_root_dir"
-
+    echo "Removing original backup directories..."
+    # Find and delete the original directories but keep the zip file
+    rm -rf "$backup_root_dir"
   }
 
   # Recursive function to clone projects and handle subgroups, including variables, issues, CI/CD settings, and CI/CD variables backup
