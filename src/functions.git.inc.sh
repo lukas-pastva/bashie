@@ -150,6 +150,52 @@ function gitlab_backup() {
     rm -rf "$backup_root_dir"
   }
 
+  # Function to backup Wiki repositories of a project
+  _backup_wikis() {
+      local project_id=$1
+      local backup_dir=$2
+      echo "Backing up Wiki for project ID $project_id"
+      local wiki_clone_url=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+          "https://gitlab.com/api/v4/projects/$project_id/wikis" | jq -r '.http_url_to_repo')
+      if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
+          local modified_wiki_url=$(echo "$wiki_clone_url" | sed "s|https://|https://oauth2:$gitlab_private_token@|")
+          local wiki_dir="${backup_dir}/wiki"
+          mkdir -p "$wiki_dir"
+          git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
+          echo "Wiki cloned to $wiki_dir"
+      else
+          echo "No Wiki found for project ID $project_id."
+      fi
+  }
+
+  # Function to backup Snippets for a project
+  _backup_snippets() {
+      local project_id=$1
+      local backup_dir=$2
+      echo "Backing up Snippets for project ID $project_id"
+      local snippets_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+          "https://gitlab.com/api/v4/projects/$project_id/snippets")
+      if [[ -n "$snippets_response" && "$snippets_response" != "[]" ]]; then
+          echo "$snippets_response" > "$backup_dir/snippets.json"
+      else
+          echo "No snippets found for project ID $project_id."
+      fi
+  }
+
+  # Function to backup Merge Requests and their comments
+  _backup_merge_requests() {
+      local project_id=$1
+      local backup_dir=$2
+      echo "Backing up Merge Requests for project ID $project_id"
+      local mrs_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+          "https://gitlab.com/api/v4/projects/$project_id/merge_requests?state=all")
+      if [[ -n "$mrs_response" && "$mrs_response" != "[]" ]]; then
+          echo "$mrs_response" > "$backup_dir/merge_requests.json"
+      else
+          echo "No merge requests found for project ID $project_id."
+      fi
+  }
+
   # Recursive function to clone projects and handle subgroups, including variables, issues, CI/CD settings, and CI/CD variables backup
   _clone_recursive() {
       local current_group_id=$1
@@ -196,9 +242,12 @@ function gitlab_backup() {
                   git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
               fi
 
-              # Backing up variables and issues
+              # Backing various objects
               _backup_variables "$project_id" "$clone_dir"
               _backup_issues "$project_id" "$clone_dir"
+              _backup_wikis "$project_id" "$clone_dir"
+              _backup_snippets "$project_id" "$clone_dir"
+              _backup_merge_requests "$project_id" "$clone_dir"
           done
 
           ((page++))
