@@ -3,8 +3,11 @@ FROM ubuntu:latest
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
-
 RUN apt-get update -qq && \
+    apt-get install -y -qq --no-install-recommends \
+        software-properties-common && \
+    add-apt-repository ppa:ondrej/php && \
+    apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
         bash \
         jq \
@@ -27,19 +30,18 @@ RUN apt-get update -qq && \
         zip \
         s3cmd \
         s3fs \
-        php-cli \
-        php-zip \
-        php-curl \
-        php-soap \
-        php-xml \
-        php-gd \
-        php-imap \
-        php-bcmath && \
+        php8.2-cli \
+        php8.2-zip \
+        php8.2-curl \
+        php8.2-soap \
+        php8.2-xml \
+        php8.2-gd \
+        php8.2-imap \
+        php8.2-bcmath && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
 ENV DEBIAN_FRONTEND=
-
 
 # Download and Install Terraform
 ARG TERRAFORM_VERSION="1.7.4"
