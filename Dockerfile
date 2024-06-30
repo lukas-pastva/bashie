@@ -37,7 +37,8 @@ RUN apt-get update -qq && \
         php8.2-xml \
         php8.2-gd \
         php8.2-imap \
-        php8.2-bcmath && \
+        php8.2-bcmath \
+        openssh-client && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
