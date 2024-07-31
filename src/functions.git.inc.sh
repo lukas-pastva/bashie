@@ -52,6 +52,7 @@ function git_edit_file() {
 
 
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
+# Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
   if [[ ${gitlab_private_token} == "" ]]; then
     echo "Enter your GitLab Private Token: "
@@ -73,6 +74,10 @@ function gitlab_backup() {
     backup_root_dir="/tmp/backup/files"
     zip_destination_dir="/tmp/backup/zip"
   else
+    if [[ "${backup_dir}" == "/" || "${backup_dir}" == "/mnt" || "${backup_dir}" == "/c" || "${backup_dir}" == "/d" || "${backup_dir}" == "/f" || "${backup_dir}" == "/f" || "${backup_dir}" == "/home" || "${backup_dir}" == "/root" || "${backup_dir}" == "/etc" || "${backup_dir}" == "/var" || "${backup_dir}" == "/usr" || "${backup_dir}" == "/bin" || "${backup_dir}" == "/sbin" || "${backup_dir}" == "/lib" || "${backup_dir}" == "/lib64" || "${backup_dir}" == "/opt" ]]; then
+      echo "Error: backup_dir cannot be set to a critical system directory."
+      return 1
+    fi
     backup_root_dir="${backup_dir}/files"
     zip_destination_dir="${backup_dir}/zip"
   fi
@@ -139,21 +144,32 @@ function gitlab_backup() {
     echo "Compressing backup directories into a single archive..."
     zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir" -x "*.zip"
     echo "Removing original backup directories..."
-    rm -rf "$backup_root_dir"
+
+    # Ensure the directory exists and is a subdirectory of /tmp or a user-specified safe directory
+    if [[ -d "$backup_root_dir" && ( "$backup_root_dir" == /tmp/* || "$backup_root_dir" == "${backup_dir}"/* ) ]]; then
+      find "$backup_root_dir" -mindepth 1 -delete
+    else
+      echo "Error: Backup root directory is not within a safe base directory, skipping deletion for safety."
+    fi
   }
 
   _backup_wikis() {
     local project_id=$1
     local backup_dir=$2
     echo "Backing up Wiki for project ID $project_id"
-    local wiki_clone_url=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-        "${gitlab_url}/api/v4/projects/$project_id/wikis" | jq -r '.http_url_to_repo')
-    if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
-        local modified_wiki_url=$(echo "$wiki_clone_url" | sed "s|https://|https://oauth2:$gitlab_private_token@|")
-        local wiki_dir="${backup_dir}/wiki"
-        mkdir -p "$wiki_dir"
-        git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
-        echo "Wiki cloned to $wiki_dir"
+    local wikis_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+        "${gitlab_url}/api/v4/projects/$project_id/wikis")
+    if [[ -n "$wikis_response" && "$wikis_response" != "[]" ]]; then
+        local wiki_clone_url=$(echo "$wikis_response" | jq -r '.http_url_to_repo')
+        if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
+            local modified_wiki_url=$(echo "$wiki_clone_url" | sed "s|https://|https://oauth2:$gitlab_private_token@|")
+            local wiki_dir="${backup_dir}/wiki"
+            mkdir -p "$wiki_dir"
+            git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
+            echo "Wiki cloned to $wiki_dir"
+        else
+            echo "No Wiki found for project ID $project_id."
+        fi
     else
         echo "No Wiki found for project ID $project_id."
     fi
@@ -266,6 +282,8 @@ function gitlab_backup() {
     rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
 }
+
+
 
 
 
