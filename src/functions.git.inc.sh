@@ -52,7 +52,6 @@ function git_edit_file() {
 
 
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
-# Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
   if [[ ${gitlab_private_token} == "" ]]; then
     echo "Enter your GitLab Private Token: "
@@ -74,12 +73,16 @@ function gitlab_backup() {
     backup_root_dir="/tmp/backup/files"
     zip_destination_dir="/tmp/backup/zip"
   else
-    if [[ "${backup_dir}" == "/" || "${backup_dir}" == "/mnt" || "${backup_dir}" == "/c" || "${backup_dir}" == "/d" || "${backup_dir}" == "/f" || "${backup_dir}" == "/f" || "${backup_dir}" == "/home" || "${backup_dir}" == "/root" || "${backup_dir}" == "/etc" || "${backup_dir}" == "/var" || "${backup_dir}" == "/usr" || "${backup_dir}" == "/bin" || "${backup_dir}" == "/sbin" || "${backup_dir}" == "/lib" || "${backup_dir}" == "/lib64" || "${backup_dir}" == "/opt" ]]; then
-      echo "Error: backup_dir cannot be set to a critical system directory."
-      return 1
-    fi
-    backup_root_dir="${backup_dir}/files"
-    zip_destination_dir="${backup_dir}/zip"
+    case "${backup_dir}" in
+      "/"|"/mnt"|"/c"|"/d"|"/e"|"/f"|"/home"|"/root"|"/etc"|"/var"|"/usr"|"/bin"|"/sbin"|"/lib"|"/lib64"|"/opt")
+        echo "Error: backup_dir cannot be set to a critical system directory."
+        return 1
+        ;;
+      *)
+        backup_root_dir="${backup_dir}/files"
+        zip_destination_dir="${backup_dir}/zip"
+        ;;
+    esac
   fi
 
   _backup_variables() {
@@ -282,6 +285,7 @@ function gitlab_backup() {
     rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
 }
+
 
 
 
