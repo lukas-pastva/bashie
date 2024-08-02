@@ -50,7 +50,6 @@ function git_edit_file() {
   rm -rf /tmp/${GIT_REPO} || true
 }
 
-
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
   if [[ ${gitlab_private_token} == "" ]]; then
@@ -85,38 +84,6 @@ function gitlab_backup() {
     esac
   fi
 
-  _backup_variables() {
-    local project_id=$1
-    local backup_dir=$2
-    echo "Backing up variables for project ID $project_id"
-    curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-        "${gitlab_url}/api/v4/projects/$project_id/variables" > "$backup_dir/variables.json"
-  }
-
-  _backup_issues() {
-    local project_id=$1
-    local backup_dir=$2
-    echo "Backing up issues and comments for project ID $project_id"
-    local issues_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-        "${gitlab_url}/api/v4/projects/$project_id/issues?with_labels_details=true&include_subscribed=true&per_page=100")
-
-    if [[ -z "$issues_response" || "$issues_response" == "[]" ]]; then
-        echo "No issues found for project ID $project_id."
-        return
-    fi
-
-    echo "$issues_response" | jq -c '.[]' | while IFS= read -r issue; do
-      local issue_iid=$(echo "$issue" | jq -r '.iid')
-      local issue_comments_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "${gitlab_url}/api/v4/projects/$project_id/issues/$issue_iid/notes")
-      if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
-        echo "$issue_comments_response" > "$backup_dir/issue_${issue_iid}_comments.json"
-      else
-        echo "No comments found for issue IID $issue_iid in project ID $project_id."
-      fi
-    done
-  }
-
   _backup_cicd_settings() {
     local group_id=$1
     local backup_dir=$2
@@ -145,56 +112,80 @@ function gitlab_backup() {
     local zip_destination_dir=$2
     local group_id=$3
     echo "Compressing backup directories into a single archive..."
-    zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir" -x "*.zip"
+    zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir/zip" -x "*.zip"
     echo "Removing original backup directories..."
 
     # Ensure the directory exists and is a subdirectory of /tmp or a user-specified safe directory
     if [[ -d "$backup_root_dir" && ( "$backup_root_dir" == /tmp/* || "$backup_root_dir" == "${backup_dir}"/* ) ]]; then
-      find "$backup_root_dir" -mindepth 1 -delete
+      #find "$backup_root_dir" -mindepth 1 -delete
+      echo "skipping deletition"
     else
       echo "Error: Backup root directory is not within a safe base directory, skipping deletion for safety."
     fi
   }
 
-  _backup_wikis() {
+  _backup_variables() {
     local project_id=$1
     local backup_dir=$2
-    echo "Backing up Wiki for project ID $project_id"
-    local wikis_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-        "${gitlab_url}/api/v4/projects/$project_id/wikis")
-    if [[ -n "$wikis_response" && "$wikis_response" != "[]" ]]; then
-        local wiki_clone_url=$(echo "$wikis_response" | jq -r '.http_url_to_repo')
-        if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
-            local modified_wiki_url=$(echo "$wiki_clone_url" | sed "s|https://|https://oauth2:$gitlab_private_token@|")
-            local wiki_dir="${backup_dir}/wiki"
-            mkdir -p "$wiki_dir"
-            git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
-            echo "Wiki cloned to $wiki_dir"
-        else
-            echo "No Wiki found for project ID $project_id."
-        fi
-    else
-        echo "No Wiki found for project ID $project_id."
+    curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/variables" > "$backup_dir/variables.json"
+  }
+
+  _backup_issues() {
+    local project_id=$1
+    local backup_dir=$2
+    local issues_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/issues?with_labels_details=true&include_subscribed=true&per_page=100")
+
+    if [[ -z "$issues_response" || "$issues_response" == "[]" ]]; then
+        # echo "No issues found for project ID $project_id."
+        return
     fi
+
+    echo "$issues_response" | jq -c '.[]' | while IFS= read -r issue; do
+      local issue_iid=$(echo "$issue" | jq -r '.iid')
+      local issue_comments_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
+          "${gitlab_url}/api/v4/projects/$project_id/issues/$issue_iid/notes")
+      if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
+        echo "$issue_comments_response" > "$backup_dir/issue_${issue_iid}_comments.json"
+      else
+        echo "No comments found for issue IID $issue_iid in project ID $project_id."
+      fi
+    done
+  }
+
+  _backup_wikis() {
+      local project_id=$1
+      local project_path=$2
+      local parent_dir=$3
+      
+      # Get the wiki clone URL
+      local wiki_clone_url=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token"  "${gitlab_url}/api/v4/projects/$project_id" | jq -r '.web_url + ".wiki.git"')
+
+      if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
+          local modified_wiki_url="${wiki_clone_url/https:\/\//https:\/\/oauth2:$gitlab_private_token@}"
+          local wiki_dir="${parent_dir}/_wiki/${project_path}"
+          mkdir -p "$wiki_dir"
+          
+          git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
+      fi
   }
 
   _backup_snippets() {
       local project_id=$1
-      local backup_dir=$2
-      echo "Backing up Snippets for project ID $project_id"
-      local snippets_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "${gitlab_url}/api/v4/projects/$project_id/snippets")
-      if [[ -n "$snippets_response" && "$snippets_response" != "[]" ]]; then
-          echo "$snippets_response" > "$backup_dir/snippets.json"
-      else
-          echo "No snippets found for project ID $project_id."
+      local project_path=$2
+      local parent_dir=$3
+
+      local snippets_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/snippets")
+      if [[ -n "$snippets_response" && "$snippets_response" != "[]" && "$snippets_response" != "{\"message\":\"404 Project Not Found\"}
+" ]]; then
+          local snippets_dir="${parent_dir}/_snippets/${project_path}"
+          mkdir -p "$snippets_dir"
+          echo "$snippets_response" > "${snippets_dir}/snippets.json"
       fi
   }
 
   _backup_merge_requests() {
       local project_id=$1
       local backup_dir=$2
-      echo "Backing up Merge Requests for project ID $project_id"
       local mrs_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
           "${gitlab_url}/api/v4/projects/$project_id/merge_requests?state=all")
       if [[ -n "$mrs_response" && "$mrs_response" != "[]" ]]; then
@@ -220,7 +211,7 @@ function gitlab_backup() {
 
           echo "$projects_response" | jq -c '.[]' | while read project; do
               local project_id=$(echo $project | jq -r '.id')
-              local project_path=$(echo $project | jq -r '.path_with_namespace')
+              local project_path="$(echo $project | jq -r '.path_with_namespace')"
               local http_url_to_repo=$(echo $project | jq -r '.http_url_to_repo')
               local clone_dir="$parent_dir/${project_path}"
               local modified_clone_url=$(echo "$http_url_to_repo" | sed "s|https://|https://user:$gitlab_private_token@|")
@@ -228,23 +219,24 @@ function gitlab_backup() {
                   echo "Directory $clone_dir already exists and is not empty. Attempting to pull latest changes."
                   (cd "$clone_dir" && git pull)
               else
-                  echo "Cloning all branches of $modified_clone_url into $clone_dir"
+                  echo "Cloning all branches of ${project_path}"
                   mkdir -p "$clone_dir"
                   git clone --quiet "$modified_clone_url" "$clone_dir" > /dev/null 2>&1
               fi
-              local mirror_dir="${parent_dir}/${project_path}_mirror"
+              local mirror_dir="${parent_dir}/_mirror/${project_path}"
               if [ -d "$mirror_dir" ]; then
                   echo "Mirror directory $mirror_dir already exists. Attempting to update the mirror."
                   (cd "$mirror_dir" && git remote update)
               else
-                  echo "Cloning a mirror of $modified_clone_url into $mirror_dir"
+                  echo "Cloning a mirror of ${project_path}"
                   mkdir -p "$mirror_dir"
                   git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
               fi
+              echo "Backing up variables, issues, wikis, snippets and MRs for ${project_path}" 
               _backup_variables "$project_id" "$clone_dir"
               _backup_issues "$project_id" "$clone_dir"
-              _backup_wikis "$project_id" "$clone_dir"
-              _backup_snippets "$project_id" "$clone_dir"
+              _backup_wikis "$project_id" "$project_path" "$parent_dir"
+              _backup_snippets "$project_id" "$project_path" "$parent_dir"
               _backup_merge_requests "$project_id" "$clone_dir"
           done
 
@@ -285,8 +277,6 @@ function gitlab_backup() {
     rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
 }
-
-
 
 
 
