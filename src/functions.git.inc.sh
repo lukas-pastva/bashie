@@ -39,7 +39,6 @@ function git_edit_file() {
     sed -i -e "/GENERATED $ANCHOR START/a\\
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
-    # Commit changes
     git add . > /dev/null 2>&1
     git commit -m "Added by automation." > /dev/null 2>&1
     git push > /dev/null 2>&1
