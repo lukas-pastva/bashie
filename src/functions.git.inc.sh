@@ -115,23 +115,33 @@ function gitlab_backup() {
     esac
   fi
 
-  _backup_pipeline_schedules() {
-    # echo "_backup_pipeline_schedules"
-    local group_id=$1
-    local backup_dir=$2
-    curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
-  }
+  _backup_data() {
+      local entity=$1
+      local id=$2
+      local path=$3
+      local parent_dir=$4
+      local endpoint_suffix=$5
+      local backup_dir="${parent_dir}/_${entity}/${path}"
+      local api_endpoint="${gitlab_url}/api/v4${endpoint_suffix}"
+      
+      local backup_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "$api_endpoint")
+      if [ ${#backup_response} -gt 3 ]; then
+          mkdir -p "$backup_dir"
+          echo -e "${backup_response}" > "${backup_dir}/${entity}.json"
+      fi
 
-  _backup_group_issues() {
-    # echo "_backup_group_issues"
-    local group_id=$1
-    local backup_dir=$2
-    echo "Backing up issues for group ID ${group_id}"
-    curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}/issues" > "$backup_dir/group_issues.json"
+      if [ "$entity" == "issues" ] || [ "$entity" == "group_issues" ]; then
+          echo "$backup_response" | jq -c '.[]' | while IFS= read -r issue; do
+              local issue_iid=$(echo "$issue" | jq -r '.iid')
+              local issue_comments_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4${endpoint_suffix}/${issue_iid}/notes")
+              if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
+                  echo "$issue_comments_response" > "${backup_dir}/issue_${issue_iid}_comments.json"
+              fi
+          done
+      fi
   }
 
   _zip_and_cleanup() {
-    # echo "_zip_and_cleanup"
     local backup_root_dir=$1
     local zip_destination_dir=$2
     local group_id=$3
@@ -148,104 +158,23 @@ function gitlab_backup() {
     fi
   }
 
-  _backup_variables() {
-    # echo "_backup_variables"
-    local project_id=$1
-    local project_path=$2
-    local parent_dir=$3
-    local variables_dir="${parent_dir}/_variables/${project_path}"
-    local variables_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/variables")
-    if [ ${#variables_response} -gt 3 ]; then
-      mkdir -p "$variables_dir"
-      echo -e "${variables_response}" > "$variables_dir/variables_repository.json"
-    fi
-  }
+  _clone_branches() {
+    local repo_url=$1
+    local clone_dir=$2
 
-  _backup_group_variables() {
-    # echo "_backup_group_variables"
-    local backup_root_dir=$1
-    local group_id=$2
-    local group_path=$3
-    local group_variables_dir="${backup_root_dir}/_variables/${group_path}"
-    local group_variables_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}/variables")
-    if [ ${#group_variables_response} -gt 3 ]; then
-      mkdir -p "${group_variables_dir}"
-      echo -e "${group_variables_response}" > "${group_variables_dir}/variables_group.json"
-    fi
-  }
-
-  _backup_issues() {
-    # echo "_backup_issues"
-    local project_id=$1
-    local backup_dir=$2
-    local issues_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/issues?with_labels_details=true&include_subscribed=true&per_page=100")
-
-    if [[ -z "$issues_response" || "$issues_response" == "[]" ]]; then
-        # echo "No issues found for project ID $project_id."
-        return
-    fi
-
-    echo "$issues_response" | jq -c '.[]' | while IFS= read -r issue; do
-      local issue_iid=$(echo "$issue" | jq -r '.iid')
-      local issue_comments_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/issues/$issue_iid/notes")
-      if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
-        echo "$issue_comments_response" > "$backup_dir/issue_${issue_iid}_comments.json"
-      else
-        echo "No comments found for issue IID $issue_iid in project ID $project_id."
-      fi
+    local branches=$(git ls-remote --heads $repo_url | awk '{print $2}' | sed 's#refs/heads/##')
+    for branch in $branches; do
+      local sanitized_branch=$(echo $branch | sed 's/[\/:]/_/g')
+      local branch_dir="${clone_dir}/${sanitized_branch}"
+      mkdir -p "$branch_dir"
+      git clone --branch $branch --single-branch $repo_url $branch_dir > /dev/null 2>&1
     done
   }
 
-  _backup_wikis() {
-    # echo "_backup_wikis"
-    local project_id=$1
-    local project_path=$2
-    local parent_dir=$3
-    local wikis_dir="${parent_dir}/_wikis/${project_path}"
-    local wikis_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/wikis")
-    if [ ${#wikis_response} -gt 3 ]; then
-      mkdir -p "$wikis_dir"
-      echo -e "${wikis_response}" > "$wikis_dir/wikis.json"
-    fi
-  }
-
-  _backup_snippets() {
-    # echo "_backup_snippets"
-    local project_id=$1
-    local project_path=$2
-    local parent_dir=$3
-
-    local snippets_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/snippets")
-    if [[ -n "$snippets_response" && "$snippets_response" != "[]" && "$snippets_response" != "{\"message\":\"404 Project Not Found\"}
-" ]]; then
-        local snippets_dir="${parent_dir}/_snippets/${project_path}"
-        mkdir -p "$snippets_dir"
-        echo "$snippets_response" > "${snippets_dir}/snippets.json"
-    fi
-  }
-
-  _backup_merge_requests() {
-    # echo "_backup_merge_requests"
-    local project_id=$1
-    local project_path=$2
-    local parent_dir=$3
-    local merge_requests_dir="${parent_dir}/_merge_requests/${project_path}"
-    local mrs_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/merge_requests?state=all")
-    if [ ${#mrs_response} -gt 3 ]; then
-      mkdir -p "$merge_requests_dir"
-      echo -e "${mrs_response}" > "$merge_requests_dir/merge_requests.json"
-    fi
-  }
-
   _clone_recursive() {
-    # echo "_clone_recursive"
     local backup_root_dir=$1
     local current_group_id=$2
     local parent_dir=$3
-
-    echo "_clone_recursive: backup_root_dir: ${backup_root_dir} | current_group_id: ${current_group_id} | parent_dir: ${parent_dir}"
-
-    _backup_pipeline_schedules "$current_group_id" "$parent_dir"
 
     local page=1
     while : ; do
@@ -262,17 +191,19 @@ function gitlab_backup() {
         local clone_dir="$parent_dir/${project_path}"
         mkdir -p "$clone_dir"
         local modified_clone_url=$(echo "$http_url_to_repo" | sed "s|https://|https://user:$gitlab_private_token@|")
-        git clone --quiet "$modified_clone_url" "$clone_dir" > /dev/null 2>&1
+        _clone_branches "$modified_clone_url" "$clone_dir"
+
 
         local mirror_dir="${parent_dir}/_mirror/${project_path}"
         mkdir -p "$mirror_dir"
         git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
 
-        _backup_variables "$project_id" "$project_path" "$parent_dir"
-        _backup_issues "$project_id" "$clone_dir"
-        _backup_wikis "$project_id" "$project_path" "$parent_dir"
-        _backup_snippets "$project_id" "$project_path" "$parent_dir"
-        _backup_merge_requests "$project_id" "$project_path" "$parent_dir"
+        _backup_data "variables" $project_id $project_path $parent_dir "/projects/${project_id}/variables"
+        _backup_data "pipeline_schedules" $project_id $project_path $backup_root_dir "/projects/${project_id}/pipeline_schedules"
+        _backup_data "wikis" $project_id $project_path $parent_dir "/projects/${project_id}/wikis"
+        _backup_data "merge_requests" $project_id $project_path $parent_dir "/projects/${project_id}/merge_requests?state=all"
+        _backup_data "snippets" $project_id $project_path $parent_dir "/projects/${project_id}/snippets"
+        _backup_data "issues" $project_id $project_path $backup_root_dir "/projects/${project_id}/issues?with_labels_details=true&include_subscribed=true&per_page=100"
       done
 
       ((page++))
@@ -289,8 +220,8 @@ function gitlab_backup() {
             local group_path="$(echo $subgroup | jq -r '.full_path')"
             local group_full_path="$parent_dir/$group_path"
             mkdir -p "$group_full_path"
-            _backup_group_issues "$subgroup_id" "$group_full_path"
-            _backup_group_variables "${backup_root_dir}" "$subgroup_id" "$group_path"
+            _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
+            _backup_data "group_issues" $group_id $group_path $backup_root_dir "/groups/${group_id}/issues"
 
             _clone_recursive "${backup_root_dir}" "$subgroup_id" "$parent_dir"
         done
@@ -305,8 +236,9 @@ function gitlab_backup() {
 
   # chicken egg
   local group_path=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}" | jq -r '.name')
-  _backup_group_issues "$group_id" "$backup_root_dir"
-  _backup_group_variables "${backup_root_dir}" "$group_id" "${group_path}"
+
+  _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
+  _backup_data "group_issues" $group_id $group_path $backup_root_dir "/groups/${group_id}/issues"
 
   _clone_recursive "${backup_root_dir}" "${group_id}" "${backup_root_dir}"
   _zip_and_cleanup "${backup_root_dir}" ${zip_destination_dir} "${group_id}"
@@ -319,6 +251,7 @@ function gitlab_backup() {
     rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
 }
+
 
 
 function gitlab_update_file() {
