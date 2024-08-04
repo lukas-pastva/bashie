@@ -19,37 +19,6 @@ function git_add_file() {
   git push > /dev/null 2>&1
 }
 
-
-function git_edit_file() {
-  local GIT_URL=$1
-  local GIT_REPO="${GIT_URL##*/}"
-  local ANCHOR=$2
-  local THE_FILE=$3
-  local CONTENTS=$4
-  local UNIQUE_IDENTIFIER=$5
-
-  cd /tmp
-  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git > /dev/null 2>&1
-  cd /tmp/${GIT_REPO}
-
-  # Check if CONTENTS already exists in the file
-  if ! grep -Fq "$UNIQUE_IDENTIFIER" "${THE_FILE}"; then
-
-    # Save file
-    preprocessed_VAR=$(printf '%s' "$CONTENTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
-    sed -i -e "/$ANCHOR/a\\
-    ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
-
-    # Commit changes
-    git add . > /dev/null 2>&1
-    git commit -m "Added by automation." > /dev/null 2>&1
-    git push > /dev/null 2>&1
-  else
-    echo_with_time "Contents already exist in the file. No changes made."
-  fi
-  rm -rf /tmp/${GIT_REPO} || true
-}
-
 function git_edit_file() {
   local GIT_URL=$1
   local GIT_REPO="${GIT_URL##*/}"
@@ -83,38 +52,6 @@ function git_edit_file() {
 
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
-  if [[ ${gitlab_private_token} == "" ]]; then
-    echo "Enter your GitLab Private Token: "
-    read gitlab_private_token
-    export gitlab_private_token="${gitlab_private_token}"
-  fi
-
-  if [[ ${group_id} == "" ]]; then
-    echo "Enter your GitLab Group ID: "
-    read group_id
-    export group_id="${group_id}"
-  fi
-
-  if [[ ${gitlab_url} == "" ]]; then
-    gitlab_url="https://gitlab.com"
-  fi
-
-  if [[ ${backup_dir} == "" ]]; then
-    backup_root_dir="/tmp/backup/files"
-    zip_destination_dir="/tmp/backup/zip"
-  else
-    case "${backup_dir}" in
-      "/"|"/mnt"|"/c"|"/d"|"/e"|"/f"|"/home"|"/root"|"/etc"|"/var"|"/usr"|"/bin"|"/sbin"|"/lib"|"/lib64"|"/opt")
-        echo "Error: backup_dir cannot be set to a critical system directory."
-        return 1
-        ;;
-      *)
-        backup_root_dir="${backup_dir}/files"
-        zip_destination_dir="${backup_dir}/zip"
-        ;;
-    esac
-  fi
-
   _backup_data() {
       local entity=$1
       local id=$2
@@ -141,23 +78,6 @@ function gitlab_backup() {
       fi
   }
 
-  _zip_and_cleanup() {
-    local backup_root_dir=$1
-    local zip_destination_dir=$2
-    local group_id=$3
-    echo "Compressing backup directories into a single archive..."
-    zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir/zip" -x "*.zip"
-    echo "Removing original backup directories..."
-
-    # Ensure the directory exists and is a subdirectory of /tmp or a user-specified safe directory
-    if [[ -d "$backup_root_dir" && ( "$backup_root_dir" == /tmp/* || "$backup_root_dir" == "${backup_dir}"/* ) ]]; then
-      #find "$backup_root_dir" -mindepth 1 -delete
-      echo "skipping deletition"
-    else
-      echo "Error: Backup root directory is not within a safe base directory, skipping deletion for safety."
-    fi
-  }
-
   _clone_branches() {
     local repo_url=$1
     local clone_dir=$2
@@ -178,23 +98,25 @@ function gitlab_backup() {
 
     local page=1
     while : ; do
-      local projects_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/projects?include_subgroups=true&per_page=100&page=$page")
+      local projects_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/projects?include_subgroups=false&per_page=100&page=$page")
       local project_count=$(echo "$projects_response" | jq '. | length')
       if [[ "$project_count" -eq 0 ]]; then break; fi
-        echo "$projects_response" | jq -c '.[]' | while IFS= read -r project_to_fix; do
+      echo "$projects_response" | jq -c '.[]' | while IFS= read -r project_to_fix; do
 
         local project=$(echo "$project_to_fix" | sed -E 's/"description_html":"([^"]*)"/"description_html":"\1"/g' | sed 's/\(description_html[^"]*:[^"]*\)"\([^"]*\)"/\1\\"/g')
         local project_id=$(echo $project | jq -r '.id')
         local project_path="$(echo $project | jq -r '.path_with_namespace')"
         local http_url_to_repo=$(echo $project | jq -r '.http_url_to_repo')
+        local clone_dir="$backup_root_dir/_repositories/${project_path}"
 
-        local clone_dir="$parent_dir/${project_path}"
+        echo "Project: ${project_path}"
+        
         mkdir -p "$clone_dir"
         local modified_clone_url=$(echo "$http_url_to_repo" | sed "s|https://|https://user:$gitlab_private_token@|")
         _clone_branches "$modified_clone_url" "$clone_dir"
 
 
-        local mirror_dir="${parent_dir}/_mirror/${project_path}"
+        local mirror_dir="${backup_root_dir}/_mirror/${project_path}"
         mkdir -p "$mirror_dir"
         git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
 
@@ -218,8 +140,9 @@ function gitlab_backup() {
         echo "$subgroups_response" | jq -c '.[]' | while read subgroup; do
             local subgroup_id=$(echo $subgroup | jq -r '.id')
             local group_path="$(echo $subgroup | jq -r '.full_path')"
-            local group_full_path="$parent_dir/$group_path"
-            mkdir -p "$group_full_path"
+
+            echo "Group: ${group_path}"
+
             _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
             _backup_data "group_issues" $group_id $group_path $backup_root_dir "/groups/${group_id}/issues"
 
@@ -230,29 +153,56 @@ function gitlab_backup() {
     done
   }
 
+  # init
   local date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
-  mkdir -p "${backup_root_dir}"
-  mkdir -p "${zip_destination_dir}"
+  if [[ ${gitlab_private_token} == "" ]]; then
+    echo "Enter your GitLab Private Token: " && read gitlab_private_token && export gitlab_private_token="${gitlab_private_token}"
+  fi
+  if [[ ${group_id} == "" ]]; then
+    echo "Enter your GitLab Group ID: " && read group_id && export group_id="${group_id}"
+  fi
+  if [[ ${gitlab_url} == "" ]]; then
+    gitlab_url="https://gitlab.com"
+  fi
+  if [[ ${backup_dir} == "" ]]; then
+    backup_root_dir="/tmp/backup/files" && zip_destination_dir="/tmp/backup/zip"
+  else
+    case "${backup_dir}" in
+      "/"|"/mnt"|"/c"|"/d"|"/e"|"/f"|"/home"|"/root"|"/etc"|"/var"|"/usr"|"/bin"|"/sbin"|"/lib"|"/lib64"|"/opt")
+        echo "Error: backup_dir cannot be set to a critical system directory."
+        return 1
+        ;;
+      *)
+        backup_root_dir="${backup_dir}/files"
+        zip_destination_dir="${backup_dir}/zip"
+        ;;
+    esac
+  fi
 
   # chicken egg
   local group_path=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}" | jq -r '.name')
-
   _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
   _backup_data "group_issues" $group_id $group_path $backup_root_dir "/groups/${group_id}/issues"
-
   _clone_recursive "${backup_root_dir}" "${group_id}" "${backup_root_dir}"
-  _zip_and_cleanup "${backup_root_dir}" ${zip_destination_dir} "${group_id}"
-  echo "---------------------------------------------------------------------------------------------------------------"
-  echo "Backup completed, zip stored in ${zip_destination_dir}/"
-  echo "---------------------------------------------------------------------------------------------------------------"
+
+  echo "Zipping ..."
+  mkdir -p ${zip_destination_dir} && zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir" -x "*.zip"
+
+  echo "Cleanup ..."
+  if [[ "$backup_root_dir" == *"/files"* ]]; then
+    find "$backup_root_dir" -mindepth 1 -delete
+  else
+    echo "Cannot cleanup, directory does not contain '/files'"
+  fi
 
   if [ -n "$rclone_bucket" ]; then
     echo "RClone is enabled, uploading backup"
     rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
+
+  echo "Done."
+
 }
-
-
 
 function gitlab_update_file() {
     project_id="$1"
