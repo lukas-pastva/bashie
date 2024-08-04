@@ -50,6 +50,37 @@ function git_edit_file() {
   rm -rf /tmp/${GIT_REPO} || true
 }
 
+function git_edit_file() {
+  local GIT_URL=$1
+  local GIT_REPO="${GIT_URL##*/}"
+  local ANCHOR=$2
+  local THE_FILE=$3
+  local CONTENTS=$4
+  local UNIQUE_IDENTIFIER=$5
+
+  cd /tmp
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git > /dev/null 2>&1
+  cd /tmp/${GIT_REPO}
+
+  # Check if CONTENTS already exists in the file
+  if ! grep -Fq "$UNIQUE_IDENTIFIER" "${THE_FILE}"; then
+
+    # Save file
+    preprocessed_VAR=$(printf '%s' "$CONTENTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
+    sed -i -e "/GENERATED $ANCHOR START/a\\
+    ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
+
+    # Commit changes
+    git add . > /dev/null 2>&1
+    git commit -m "Added by automation." > /dev/null 2>&1
+    git push > /dev/null 2>&1
+  else
+    echo_with_time "Contents already exist in the file. No changes made."
+  fi
+  rm -rf /tmp/${GIT_REPO} || true
+}
+
+
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
   if [[ ${gitlab_private_token} == "" ]]; then
@@ -84,30 +115,23 @@ function gitlab_backup() {
     esac
   fi
 
-  _backup_cicd_settings() {
+  _backup_pipeline_schedules() {
+    # echo "_backup_pipeline_schedules"
     local group_id=$1
     local backup_dir=$2
-    echo "Backing up CI/CD settings for group ID ${group_id}"
-    curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
+    curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}/ci/pipeline_schedules" > "$backup_dir/cicd_pipeline_schedules.json"
   }
 
   _backup_group_issues() {
-      local group_id=$1
-      local backup_dir=$2
-      echo "Backing up issues for group ID ${group_id}"
-      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "${gitlab_url}/api/v4/groups/${group_id}/issues" > "$backup_dir/group_issues.json"
-  }
-
-  _backup_group_variables() {
-      local group_id=$1
-      local backup_dir=$2
-      echo "Backing up CI/CD variables for group ID ${group_id}"
-      curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "${gitlab_url}/api/v4/groups/${group_id}/variables" > "$backup_dir/group_variables.json"
+    # echo "_backup_group_issues"
+    local group_id=$1
+    local backup_dir=$2
+    echo "Backing up issues for group ID ${group_id}"
+    curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}/issues" > "$backup_dir/group_issues.json"
   }
 
   _zip_and_cleanup() {
+    # echo "_zip_and_cleanup"
     local backup_root_dir=$1
     local zip_destination_dir=$2
     local group_id=$3
@@ -125,15 +149,36 @@ function gitlab_backup() {
   }
 
   _backup_variables() {
+    # echo "_backup_variables"
     local project_id=$1
-    local backup_dir=$2
-    curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/variables" > "$backup_dir/variables.json"
+    local project_path=$2
+    local parent_dir=$3
+    local variables_dir="${parent_dir}/_variables/${project_path}"
+    local variables_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/variables")
+    if [ ${#variables_response} -gt 3 ]; then
+      mkdir -p "$variables_dir"
+      echo -e "${variables_response}" > "$variables_dir/variables_repository.json"
+    fi
+  }
+
+  _backup_group_variables() {
+    # echo "_backup_group_variables"
+    local backup_root_dir=$1
+    local group_id=$2
+    local group_path=$3
+    local group_variables_dir="${backup_root_dir}/_variables/${group_path}"
+    local group_variables_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}/variables")
+    if [ ${#group_variables_response} -gt 3 ]; then
+      mkdir -p "${group_variables_dir}"
+      echo -e "${group_variables_response}" > "${group_variables_dir}/variables_group.json"
+    fi
   }
 
   _backup_issues() {
+    # echo "_backup_issues"
     local project_id=$1
     local backup_dir=$2
-    local issues_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/issues?with_labels_details=true&include_subscribed=true&per_page=100")
+    local issues_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/issues?with_labels_details=true&include_subscribed=true&per_page=100")
 
     if [[ -z "$issues_response" || "$issues_response" == "[]" ]]; then
         # echo "No issues found for project ID $project_id."
@@ -142,8 +187,7 @@ function gitlab_backup() {
 
     echo "$issues_response" | jq -c '.[]' | while IFS= read -r issue; do
       local issue_iid=$(echo "$issue" | jq -r '.iid')
-      local issue_comments_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "${gitlab_url}/api/v4/projects/$project_id/issues/$issue_iid/notes")
+      local issue_comments_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/issues/$issue_iid/notes")
       if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
         echo "$issue_comments_response" > "$backup_dir/issue_${issue_iid}_comments.json"
       else
@@ -153,120 +197,118 @@ function gitlab_backup() {
   }
 
   _backup_wikis() {
-      local project_id=$1
-      local project_path=$2
-      local parent_dir=$3
-      
-      # Get the wiki clone URL
-      local wiki_clone_url=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token"  "${gitlab_url}/api/v4/projects/$project_id" | jq -r '.web_url + ".wiki.git"')
-
-      if [[ -n "$wiki_clone_url" && "$wiki_clone_url" != "null" ]]; then
-          local modified_wiki_url="${wiki_clone_url/https:\/\//https:\/\/oauth2:$gitlab_private_token@}"
-          local wiki_dir="${parent_dir}/_wiki/${project_path}"
-          mkdir -p "$wiki_dir"
-          
-          git clone --quiet "$modified_wiki_url" "$wiki_dir" > /dev/null 2>&1
-      fi
+    # echo "_backup_wikis"
+    local project_id=$1
+    local project_path=$2
+    local parent_dir=$3
+    local wikis_dir="${parent_dir}/_wikis/${project_path}"
+    local wikis_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/wikis")
+    if [ ${#wikis_response} -gt 3 ]; then
+      mkdir -p "$wikis_dir"
+      echo -e "${wikis_response}" > "$wikis_dir/wikis.json"
+    fi
   }
 
   _backup_snippets() {
-      local project_id=$1
-      local project_path=$2
-      local parent_dir=$3
+    # echo "_backup_snippets"
+    local project_id=$1
+    local project_path=$2
+    local parent_dir=$3
 
-      local snippets_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/snippets")
-      if [[ -n "$snippets_response" && "$snippets_response" != "[]" && "$snippets_response" != "{\"message\":\"404 Project Not Found\"}
+    local snippets_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/snippets")
+    if [[ -n "$snippets_response" && "$snippets_response" != "[]" && "$snippets_response" != "{\"message\":\"404 Project Not Found\"}
 " ]]; then
-          local snippets_dir="${parent_dir}/_snippets/${project_path}"
-          mkdir -p "$snippets_dir"
-          echo "$snippets_response" > "${snippets_dir}/snippets.json"
-      fi
+        local snippets_dir="${parent_dir}/_snippets/${project_path}"
+        mkdir -p "$snippets_dir"
+        echo "$snippets_response" > "${snippets_dir}/snippets.json"
+    fi
   }
 
   _backup_merge_requests() {
-      local project_id=$1
-      local backup_dir=$2
-      local mrs_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-          "${gitlab_url}/api/v4/projects/$project_id/merge_requests?state=all")
-      if [[ -n "$mrs_response" && "$mrs_response" != "[]" ]]; then
-          echo "$mrs_response" > "$backup_dir/merge_requests.json"
-      else
-          echo "No merge requests found for project ID $project_id."
-      fi
+    # echo "_backup_merge_requests"
+    local project_id=$1
+    local project_path=$2
+    local parent_dir=$3
+    local merge_requests_dir="${parent_dir}/_merge_requests/${project_path}"
+    local mrs_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/$project_id/merge_requests?state=all")
+    if [ ${#mrs_response} -gt 3 ]; then
+      mkdir -p "$merge_requests_dir"
+      echo -e "${mrs_response}" > "$merge_requests_dir/merge_requests.json"
+    fi
   }
 
   _clone_recursive() {
-      local current_group_id=$1
-      local parent_dir=$2
-      _backup_cicd_settings "$current_group_id" "$parent_dir"
-      _backup_group_issues "$current_group_id" "$parent_dir"
-      _backup_group_variables "$current_group_id" "$parent_dir"
+    # echo "_clone_recursive"
+    local backup_root_dir=$1
+    local current_group_id=$2
+    local parent_dir=$3
 
-      local page=1
-      while : ; do
-          local projects_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-              "${gitlab_url}/api/v4/groups/$current_group_id/projects?include_subgroups=true&per_page=100&page=$page")
-          local project_count=$(echo "$projects_response" | jq '. | length')
-          if [[ "$project_count" -eq 0 ]]; then break; fi
+    echo "_clone_recursive: backup_root_dir: ${backup_root_dir} | current_group_id: ${current_group_id} | parent_dir: ${parent_dir}"
 
-          echo "$projects_response" | jq -c '.[]' | while read project; do
-              local project_id=$(echo $project | jq -r '.id')
-              local project_path="$(echo $project | jq -r '.path_with_namespace')"
-              local http_url_to_repo=$(echo $project | jq -r '.http_url_to_repo')
-              local clone_dir="$parent_dir/${project_path}"
-              local modified_clone_url=$(echo "$http_url_to_repo" | sed "s|https://|https://user:$gitlab_private_token@|")
-              if [ -d "$clone_dir" ] && [ "$(ls -A $clone_dir)" ]; then
-                  echo "Directory $clone_dir already exists and is not empty. Attempting to pull latest changes."
-                  (cd "$clone_dir" && git pull)
-              else
-                  echo "Cloning all branches of ${project_path}"
-                  mkdir -p "$clone_dir"
-                  git clone --quiet "$modified_clone_url" "$clone_dir" > /dev/null 2>&1
-              fi
-              local mirror_dir="${parent_dir}/_mirror/${project_path}"
-              if [ -d "$mirror_dir" ]; then
-                  echo "Mirror directory $mirror_dir already exists. Attempting to update the mirror."
-                  (cd "$mirror_dir" && git remote update)
-              else
-                  echo "Cloning a mirror of ${project_path}"
-                  mkdir -p "$mirror_dir"
-                  git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
-              fi
-              echo "Backing up variables, issues, wikis, snippets and MRs for ${project_path}" 
-              _backup_variables "$project_id" "$clone_dir"
-              _backup_issues "$project_id" "$clone_dir"
-              _backup_wikis "$project_id" "$project_path" "$parent_dir"
-              _backup_snippets "$project_id" "$project_path" "$parent_dir"
-              _backup_merge_requests "$project_id" "$clone_dir"
-          done
+    _backup_pipeline_schedules "$current_group_id" "$parent_dir"
 
-          ((page++))
+    local page=1
+    while : ; do
+      local projects_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/projects?include_subgroups=true&per_page=100&page=$page")
+      local project_count=$(echo "$projects_response" | jq '. | length')
+      if [[ "$project_count" -eq 0 ]]; then break; fi
+        echo "$projects_response" | jq -c '.[]' | while IFS= read -r project_to_fix; do
+
+        local project=$(echo "$project_to_fix" | sed -E 's/"description_html":"([^"]*)"/"description_html":"\1"/g' | sed 's/\(description_html[^"]*:[^"]*\)"\([^"]*\)"/\1\\"/g')
+        local project_id=$(echo $project | jq -r '.id')
+        local project_path="$(echo $project | jq -r '.path_with_namespace')"
+        local http_url_to_repo=$(echo $project | jq -r '.http_url_to_repo')
+
+        local clone_dir="$parent_dir/${project_path}"
+        mkdir -p "$clone_dir"
+        local modified_clone_url=$(echo "$http_url_to_repo" | sed "s|https://|https://user:$gitlab_private_token@|")
+        git clone --quiet "$modified_clone_url" "$clone_dir" > /dev/null 2>&1
+
+        local mirror_dir="${parent_dir}/_mirror/${project_path}"
+        mkdir -p "$mirror_dir"
+        git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
+
+        _backup_variables "$project_id" "$project_path" "$parent_dir"
+        _backup_issues "$project_id" "$clone_dir"
+        _backup_wikis "$project_id" "$project_path" "$parent_dir"
+        _backup_snippets "$project_id" "$project_path" "$parent_dir"
+        _backup_merge_requests "$project_id" "$project_path" "$parent_dir"
       done
 
-      page=1
-      while : ; do
-          local subgroups_response=$(curl --silent --header "PRIVATE-TOKEN: $gitlab_private_token" \
-              "${gitlab_url}/api/v4/groups/$current_group_id/subgroups?per_page=100&page=$page")
-          local subgroup_count=$(echo "$subgroups_response" | jq '. | length')
-          if [[ "$subgroup_count" -eq 0 ]]; then break; fi
+      ((page++))
+    done
 
-          echo "$subgroups_response" | jq -c '.[]' | while read subgroup; do
-              local subgroup_id=$(echo $subgroup | jq -r '.id')
-              local subgroup_dir="$parent_dir/$(echo $subgroup | jq -r '.full_path')"
-              mkdir -p "$subgroup_dir"
-              _backup_group_issues "$subgroup_id" "$subgroup_dir"
-              _backup_group_variables "$subgroup_id" "$subgroup_dir"
-              _clone_recursive "$subgroup_id" "$parent_dir"
-          done
+    page=1
+    while : ; do
+        local subgroups_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/subgroups?per_page=100&page=$page")
+        local subgroup_count=$(echo "$subgroups_response" | jq '. | length')
+        if [[ "$subgroup_count" -eq 0 ]]; then break; fi
 
-          ((page++))
-      done
+        echo "$subgroups_response" | jq -c '.[]' | while read subgroup; do
+            local subgroup_id=$(echo $subgroup | jq -r '.id')
+            local group_path="$(echo $subgroup | jq -r '.full_path')"
+            local group_full_path="$parent_dir/$group_path"
+            mkdir -p "$group_full_path"
+            _backup_group_issues "$subgroup_id" "$group_full_path"
+            _backup_group_variables "${backup_root_dir}" "$subgroup_id" "$group_path"
+
+            _clone_recursive "${backup_root_dir}" "$subgroup_id" "$parent_dir"
+        done
+
+        ((page++))
+    done
   }
 
   local date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
   mkdir -p "${backup_root_dir}"
   mkdir -p "${zip_destination_dir}"
-  _clone_recursive "${group_id}" "${backup_root_dir}"
+
+  # chicken egg
+  local group_path=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}" | jq -r '.name')
+  _backup_group_issues "$group_id" "$backup_root_dir"
+  _backup_group_variables "${backup_root_dir}" "$group_id" "${group_path}"
+
+  _clone_recursive "${backup_root_dir}" "${group_id}" "${backup_root_dir}"
   _zip_and_cleanup "${backup_root_dir}" ${zip_destination_dir} "${group_id}"
   echo "---------------------------------------------------------------------------------------------------------------"
   echo "Backup completed, zip stored in ${zip_destination_dir}/"
@@ -277,8 +319,6 @@ function gitlab_backup() {
     rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
 }
-
-
 
 
 function gitlab_update_file() {
