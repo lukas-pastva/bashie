@@ -98,7 +98,7 @@ function gitlab_backup() {
 
     local page=1
     while : ; do
-      local projects_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/projects?include_subgroups=false&per_page=100&page=$page")
+      local projects_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/projects?include_subgroups=false&with_shared=false&per_page=100&page=$page")
       local project_count=$(echo "$projects_response" | jq '. | length')
       if [[ "$project_count" -eq 0 ]]; then break; fi
       echo "$projects_response" | jq -c '.[]' | while IFS= read -r project_to_fix; do
