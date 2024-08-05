@@ -66,10 +66,11 @@ function gitlab_backup() {
           echo -e "${backup_response}" > "${backup_dir}/${entity}.json"
       fi
 
-      if [ "$entity" == "issues" ] || [ "$entity" == "group_issues" ]; then
+      if [ "$entity" == "issues" ]; then
           echo "$backup_response" | jq -c '.[]' | while IFS= read -r issue; do
               local issue_iid=$(echo "$issue" | jq -r '.iid')
-              local issue_comments_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4${endpoint_suffix}/${issue_iid}/notes")
+              local project_id=$(echo "$issue" | jq -r '.project_id')
+              local issue_comments_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/${project_id}/issues/${issue_iid}/notes")
               if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
                   echo "$issue_comments_response" > "${backup_dir}/issue_${issue_iid}_comments.json"
               fi
@@ -143,7 +144,6 @@ function gitlab_backup() {
             echo "Group: ${group_path}"
 
             _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
-            _backup_data "group_issues" $group_id $group_path $backup_root_dir "/groups/${group_id}/issues"
 
             _clone_recursive "${backup_root_dir}" "$subgroup_id" "$parent_dir"
         done
@@ -181,7 +181,6 @@ function gitlab_backup() {
   # chicken egg
   local group_path=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}" | jq -r '.name')
   _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
-  _backup_data "group_issues" $group_id $group_path $backup_root_dir "/groups/${group_id}/issues"
   _clone_recursive "${backup_root_dir}" "${group_id}" "${backup_root_dir}"
 
   echo "Zipping ..."
