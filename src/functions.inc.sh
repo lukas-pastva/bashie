@@ -1,13 +1,12 @@
 #!/bin/bash
 
-source /functions.git.inc.sh || true
-source /functions.vault.inc.sh || true
+source /functions.git.inc.sh 2>/dev/null || true
+source /functions.vault.inc.sh 2>/dev/null || true
 
-# Function to check if a variable is a number
-function is_number() {
-  [[ $1 =~ ^[0-9]+$ ]]
-}
-
+# Enable debugging if DEBUG environment variable is set
+if [ "$DEBUG" = "true" ]; then
+  set -x
+fi
 
 function k8s_ingress_update_url() {
   local namespace=$1
@@ -49,10 +48,6 @@ function kdeleteall() {
     fi
 }
 
-function e(){
-  cd ~/Desktop/_envs
-}
-
 function echo_with_time() {
   # Get current time in UTC in Z format
   local current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
@@ -69,32 +64,3 @@ function echo_with_time() {
     echo -e "${current_time} $1\n"
   fi
 }
-#
-#function git_set_remote() {
-#  if [ "$#" -ne 2 ]; then
-#    echo "Usage: set_git_remote <repo_url> <token>"
-#    echo "  <repo_url>: The URL of the repository where you want to change the remote (e.g., https://github.com/username/new-repository.git)"
-#    echo "  <token>: Your personal access token for authentication"
-#    return 1
-#  fi
-#
-#  local repo_url=$1
-#  local token=$2
-#
-#  # Check if the URL has 'https://' at the start and strip it out because we'll add it along with the token
-#  if [[ $repo_url =~ ^https:// ]]; then
-#    repo_url="${repo_url#https://}"
-#  fi
-#
-#  # Construct the new URL with the token
-#  local new_url="https://${token}@${repo_url}"
-#
-#  # Set the new URL to the Git remote named 'origin'
-#  git remote set-url origin "$new_url"
-#  echo "Remote URL set to ${new_url}"
-#}
-
-# Enable debugging if DEBUG environment variable is set
-if [ "$DEBUG" = "true" ]; then
-  set -x
-fi

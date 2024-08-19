@@ -1,6 +1,5 @@
 #!/bin/bash
 
-
 function git_add_file() {
   local GIT_URL=$1
   local GIT_REPO="${GIT_URL##*/}"
@@ -39,6 +38,7 @@ function git_edit_file() {
     sed -i -e "/GENERATED $ANCHOR START/a\\
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
+    # Commit changes
     git add . > /dev/null 2>&1
     git commit -m "Added by automation." > /dev/null 2>&1
     git push > /dev/null 2>&1
@@ -47,7 +47,6 @@ function git_edit_file() {
   fi
   rm -rf /tmp/${GIT_REPO} || true
 }
-
 
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
@@ -195,7 +194,7 @@ function gitlab_backup() {
 
   if [ -n "$rclone_bucket" ]; then
     echo "RClone is enabled, uploading backup"
-    rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab"
+    rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
   fi
 
   echo "Done."
@@ -203,29 +202,53 @@ function gitlab_backup() {
 }
 
 function gitlab_update_file() {
-    project_id="$1"
-    file_path="$2"
-    branch_name="$3"
-    commit_message="$4"
-    file_contents="$5"
+  project_id="$1"
+  file_path="$2"
+  branch_name="$3"
+  commit_message="$4"
+  file_contents="$5"
 
-    # Encode the file path for URL
-    encoded_file_path=$(printf '%s' "$file_path" | jq -sRr @uri)
+  # Encode the file path for URL
+  encoded_file_path=$(printf '%s' "$file_path" | jq -sRr @uri)
 
-    # Construct the API URL dynamically, ensuring there's no newline character at the end
-    api_url="https://gitlab.com/api/v4/projects/${project_id}/repository/files/${encoded_file_path}"
+  # Construct the API URL dynamically, ensuring there's no newline character at the end
+  api_url="https://gitlab.com/api/v4/projects/${project_id}/repository/files/${encoded_file_path}"
 
-    # Ensure the file contents are properly escaped as a JSON string
-    json_safe_contents=$(echo "$file_contents" | jq -sR .)
+  # Ensure the file contents are properly escaped as a JSON string
+  json_safe_contents=$(echo "$file_contents" | jq -sR .)
 
-    curl --silent --request PUT "$api_url" \
-        --header "PRIVATE-TOKEN: $GLOBAL_GIT_TOKEN" \
-        --header "Content-Type: application/json" \
-        --data "{
-            \"branch\": \"${branch_name}\",
-            \"author_email\": \"$GLOBAL_GIT_EMAIL\",
-            \"author_name\": \"$GLOBAL_GIT_USER\",
-            \"content\": $json_safe_contents,
-            \"commit_message\": \"${commit_message}\"
-        }" # > /dev/null 2>&1
+  curl -s --request PUT "$api_url" \
+      -H "PRIVATE-TOKEN: $GLOBAL_GIT_TOKEN" \
+      -H "Content-Type: application/json" \
+      --data "{
+          \"branch\": \"${branch_name}\",
+          \"author_email\": \"$GLOBAL_GIT_EMAIL\",
+          \"author_name\": \"$GLOBAL_GIT_USER\",
+          \"content\": $json_safe_contents,
+          \"commit_message\": \"${commit_message}\"
+      }" # > /dev/null 2>&1
+}
+
+function git_set_remote() {
+  if [ "$#" -ne 2 ]; then
+    echo "Usage: set_git_remote <repo_url> <token>"
+    echo "  <repo_url>: The URL of the repository where you want to change the remote (e.g., https://github.com/username/new-repository.git)"
+    echo "  <token>: Your personal access token for authentication"
+    return 1
+  fi
+
+  local repo_url=$1
+  local token=$2
+
+  # Check if the URL has 'https://' at the start and strip it out because we'll add it along with the token
+  if [[ $repo_url =~ ^https:// ]]; then
+    repo_url="${repo_url#https://}"
+  fi
+
+  # Construct the new URL with the token
+  local new_url="https://${token}@${repo_url}"
+
+  # Set the new URL to the Git remote named 'origin'
+  git remote set-url origin "$new_url"
+  echo "Remote URL set to ${new_url}"
 }
