@@ -20,6 +20,7 @@ function k8s_ingress_update_url() {
   curl -sSk -X PUT -H "Authorization: Bearer ${token}" -H 'Content-Type: application/json' -d "${updated_json}" "${api_server}${ingress_path}" # > /dev/null 2>&1
 }
 
+
 function k(){
   kubectl "$@"
 }
