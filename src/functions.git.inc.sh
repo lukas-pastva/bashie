@@ -35,7 +35,7 @@ function git_edit_file() {
 
     # Save file
     preprocessed_VAR=$(printf '%s' "$CONTENTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
-    sed -i -e "/GENERATED $ANCHOR START/a\\
+    sed -i -e "/GENERATED $ANCHOR/a\\
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
     # Commit changes
