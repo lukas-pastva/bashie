@@ -39,9 +39,9 @@ function git_edit_file() {
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
     # Commit changes
-    git add . > /dev/null 2>&1
-    git commit -m "Added by automation." > /dev/null 2>&1
-    git push > /dev/null 2>&1
+    git add .
+    git commit -m "Added by automation."
+    git push
   else
     echo_with_time "Contents already exist in the file. No changes made."
   fi
