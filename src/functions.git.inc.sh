@@ -27,7 +27,7 @@ function git_edit_file() {
   local UNIQUE_IDENTIFIER=$5
 
   cd /tmp
-  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git > /dev/null 2>&1
+  git clone --quiet https://lukas-pastva:${GLOBAL_GIT_TOKEN}@${GIT_URL}.git
   cd /tmp/${GIT_REPO}
 
   # Check if CONTENTS already exists in the file
@@ -35,7 +35,7 @@ function git_edit_file() {
 
     # Save file
     preprocessed_VAR=$(printf '%s' "$CONTENTS" | sed 's/\\/&&/g;s/^[[:blank:]]/\\&/;s/$/\\/')
-    sed -i -e "/GENERATED $ANCHOR/a\\
+    sed -i -e "/$ANCHOR/a\\
     ${preprocessed_VAR%?}" "/tmp/${GIT_REPO}/${THE_FILE}"
 
     # Commit changes
