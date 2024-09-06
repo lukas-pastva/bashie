@@ -51,8 +51,7 @@ function vault_secret_item_add_line() {
   local newLineValue=$3
 
   # Fetch the current secret from Vault
-  local currentSecretData=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
-    "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq -r ".data.data")
+  local currentSecretData=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq -r ".data.data")
 
   # Extract the current value of the target key
   local currentSecret=$(echo "$currentSecretData" | jq -r ".\"$targetKey\"")
