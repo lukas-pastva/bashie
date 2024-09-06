@@ -45,27 +45,31 @@ function vault_secret_add_item() {
   local updatedSecret=$(echo ${currentSecret} | jq --arg key "${newKey}" --arg value "$newValue" '. + {($key): $value}')
   curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" -H "Content-Type: application/json" --data "{\"data\": ${updatedSecret}}" "${VAULT_ADDR}/v1/kv/data/${secretPath}"
 }
-
 function vault_secret_item_add_line() {
   local secretPath=$1
   local targetKey=$2
   local newLineValue=$3
 
   # Fetch the current secret from Vault
-  local currentSecret=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
-    "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq -r ".data.data | .[\"$targetKey\"]")
+  local currentSecretData=$(curl -s -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
+    "${VAULT_ADDR}/v1/kv/data/${secretPath}" | jq -r ".data.data")
 
-  # Append new line to the existing value
+  # Extract the current value of the target key
+  local currentSecret=$(echo "$currentSecretData" | jq -r ".\"$targetKey\"")
+
+  # Append the new line to the existing value
   local updatedValue="${currentSecret}
 ${newLineValue}"
 
+  # Update the target key with the new value
+  local updatedSecret=$(echo "$currentSecretData" | jq --arg key "$targetKey" --arg value "$updatedValue" '.[$key] = $value')
+
   # Prepare the updated secret payload
-  local updatedSecret=$(jq -n --arg key "$targetKey" --arg value "$updatedValue" \
-    '{data: {($key): $value}}')
+  local updatedSecretPayload=$(jq -n --argjson data "$updatedSecret" '{data: $data}')
 
   # Update the secret in Vault
   local statusCode=$(curl -s -o /dev/null -w "%{http_code}" -X PUT -H "X-Vault-Token: ${GLOBAL_VAULT_TOKEN}" \
-    -H "Content-Type: application/json" --data "$updatedSecret" \
+    -H "Content-Type: application/json" --data "$updatedSecretPayload" \
     "${VAULT_ADDR}/v1/kv/data/${secretPath}")
 
   # Optional: Check if the operation was successful
@@ -73,6 +77,7 @@ ${newLineValue}"
     echo_with_time "Failed to update the secret. Status code: $statusCode"
   fi
 }
+
 
 function vault_secrets_delete_with_test_prefix() {
     # Prompt for Vault token
