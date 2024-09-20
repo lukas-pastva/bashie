@@ -48,7 +48,7 @@ function gitlab_user_statistics(){
 
     # Extract user emails and count commits per user
     for email in $(echo "$commits" | jq -r '.[] | .author_email'); do
-      if [[ -n "$email" ]]; then
+      if [[ -n "$email" && "$email" != "null" ]]; then  # Ignore empty or null emails
         project_user_list+=("$email")
         
         # Accumulate commit counts in the associative array
@@ -116,9 +116,6 @@ function gitlab_user_statistics(){
 
   echo "Statistics saved to $OUTPUT_FILE"
 }
-
-
-
 
 
 
