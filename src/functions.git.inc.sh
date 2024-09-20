@@ -1,6 +1,7 @@
 #!/bin/bash
 
 declare -A user_commit_count  # Declare globally to ensure it's accessible throughout the script
+total_commits=0  # Global variable to hold the total commits
 
 function gitlab_user_statistics(){
 
@@ -44,7 +45,6 @@ function gitlab_user_statistics(){
     local project_id=$1
     local commits=$(get_commits_for_project $project_id)
     local project_user_list=()
-    local total_commits=0  # Variable to hold the total number of commits for this repo
 
     # Extract user emails and count commits per user
     for email in $(echo "$commits" | jq -r '.[] | .author_email'); do
@@ -53,13 +53,16 @@ function gitlab_user_statistics(){
       if [[ -n "$email" && "$email" != "null" && "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         project_user_list+=("$email")
         user_commit_count["$email"]=$(( ${user_commit_count["$email"]} + 1 ))
+
+        # Debug output: Show email and current number of unique users
+        echo "DEBUG: Added user '$email'. Total unique users so far: ${#user_commit_count[@]}"
       fi
-      total_commits=$((total_commits + 1))  # Count the commit
+      total_commits=$((total_commits + 1))  # Increment total commit count globally
     done
 
-    # Return the unique email list and total commit count
+    # Return the list of unique users
     local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ', ' | sed 's/, $//')
-    echo "$unique_emails,$total_commits"  # Returning users and total commits
+    echo "$unique_emails"  # Return unique emails for this project
   }
 
   # Start writing to the output file
@@ -77,10 +80,9 @@ function gitlab_user_statistics(){
       project_name=$(echo "$project_details" | jq -r '.name')
       project_path=$(echo "$project_details" | jq -r '.path_with_namespace')
 
-      # Call the function to get the list of unique users (emails) and total commits
-      project_stats=$(get_commit_count_per_user $project)
-      project_users=$(echo "$project_stats" | cut -d ',' -f1)  # Extract user list
-      total_commits=$(echo "$project_stats" | cut -d ',' -f2)  # Extract total commit count
+      # Call the function to get the list of unique users (emails)
+      project_users=$(get_commit_count_per_user $project)
+
       echo "debug: Users - $project_users, Total Commits - $total_commits"
 
       # If project_users is empty, set commit_count to 0; otherwise, count the users
@@ -112,14 +114,13 @@ function gitlab_user_statistics(){
     echo "$email: ${user_commit_count[$email]} commits" | tee -a "$OUTPUT_FILE"
   done
 
-  # Print total number of unique users
+  # Print total number of unique users and total commits
   echo "" | tee -a "$OUTPUT_FILE"
   echo "Total number of unique users: ${#user_commit_count[@]}" | tee -a "$OUTPUT_FILE"
+  echo "Total number of commits: $total_commits" | tee -a "$OUTPUT_FILE"  # Print total commit count
 
   echo "Statistics saved to $OUTPUT_FILE"
 }
-
-
 
 function git_add_file() {
   local GIT_URL=$1
