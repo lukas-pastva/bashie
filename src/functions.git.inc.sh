@@ -51,9 +51,11 @@ function gitlab_user_statistics(){
     done
 
     # Remove duplicate emails and return the comma-separated list of unique users (emails)
-    echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ',' | sed 's/,$//'
-  }
+    local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
 
+    # Return the unique email list or explicitly return an empty string if no users were found
+    echo "$unique_emails"
+  }
 
   # Start writing to the output file
   echo "GitLab User Statistics" | tee "$OUTPUT_FILE"
@@ -65,12 +67,18 @@ function gitlab_user_statistics(){
 
   for group in $(get_groups | jq -r '.[].id'); do
     for project in $(get_projects_in_group $group | jq -r '.[].id'); do
-      # Combine everything into one line: group ID, project ID, and commits
-      echo -n "Group ID: $group, Project ID: $project, Commits: " | tee -a "$OUTPUT_FILE"
+      # Call the function to get the list of unique users (emails)
       project_users=$(get_commit_count_per_user $project)
-      commit_count=$(echo "$project_users" | tr ',' '\n' | wc -l)
-      echo "Users: $commit_count, Users List: $project_users" | tee -a "$OUTPUT_FILE"
-      echo "" | tee -a "$OUTPUT_FILE"  # Add new line after each project's data
+      
+      # If project_users is empty, set commit_count to 0; otherwise, count the users
+      if [[ -z "$project_users" ]]; then
+        commit_count=0
+      else
+        commit_count=$(echo "$project_users" | tr ',' '\n' | wc -l)
+      fi
+
+      # Output results to the console and the file
+      echo "Group ID: $group, Project ID: $project, Users: $commit_count, Users List: $project_users" | tee -a "$OUTPUT_FILE"
     done
   done
 
@@ -90,6 +98,7 @@ function gitlab_user_statistics(){
 
   echo "Statistics saved to $OUTPUT_FILE"
 }
+
 
 
 
