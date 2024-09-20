@@ -28,6 +28,12 @@ function gitlab_user_statistics(){
     curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/groups/$group_id/projects?per_page=100"
   }
 
+  # Function to get project details (path and name)
+  get_project_details() {
+    local project_id=$1
+    curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/projects/$project_id"
+  }
+
   # Function to get all commits for a project in the last month
   get_commits_for_project() {
     local project_id=$1
@@ -51,7 +57,7 @@ function gitlab_user_statistics(){
     done
 
     # Remove duplicate emails and return the comma-separated list of unique users (emails)
-    local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ',' | sed 's/,$//')
+    local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ', ' | sed 's/, $//')
 
     # Return the unique email list or explicitly return an empty string if no users were found
     echo "$unique_emails"
@@ -67,6 +73,11 @@ function gitlab_user_statistics(){
 
   for group in $(get_groups | jq -r '.[].id'); do
     for project in $(get_projects_in_group $group | jq -r '.[].id'); do
+      # Get project details (name and path)
+      project_details=$(get_project_details $project)
+      project_name=$(echo "$project_details" | jq -r '.name')
+      project_path=$(echo "$project_details" | jq -r '.path_with_namespace')
+
       # Call the function to get the list of unique users (emails)
       project_users=$(get_commit_count_per_user $project)
       
@@ -77,8 +88,15 @@ function gitlab_user_statistics(){
         commit_count=$(echo "$project_users" | tr ',' '\n' | wc -l)
       fi
 
-      # Output results to the console and the file
-      echo "Group ID: $group, Project ID: $project, Users: $commit_count, Users List: $project_users" | tee -a "$OUTPUT_FILE"
+      # Output project details, users, and other information
+      echo "Group ID: $group, Project ID: $project, Project Path: $project_path, Project Name: $project_name, Users: $commit_count" | tee -a "$OUTPUT_FILE"
+
+      # Output user list (if any) on a new line
+      if [[ -n "$project_users" ]]; then
+        echo "Users List:" | tee -a "$OUTPUT_FILE"
+        echo "$project_users" | tr ',' '\n' | sed 's/^/ - /' | tee -a "$OUTPUT_FILE"
+      fi
+      echo "" | tee -a "$OUTPUT_FILE"  # Add new line after each project's data
     done
   done
 
@@ -98,6 +116,7 @@ function gitlab_user_statistics(){
 
   echo "Statistics saved to $OUTPUT_FILE"
 }
+
 
 
 
