@@ -14,7 +14,7 @@ function gitlab_user_statistics(){
   SINCE_DATE=$(date -d "1 month ago" +"%Y-%m-%dT00:00:00Z")
   UNTIL_DATE=$(date +"%Y-%m-%dT23:59:59Z")
 
-  # Declare an associative array to hold commit counts per user
+  # Declare an associative array to hold commit counts per user (email)
   declare -A user_commit_count
 
   # Function to get all groups
@@ -38,18 +38,22 @@ function gitlab_user_statistics(){
   get_commit_count_per_user() {
     local project_id=$1
     local commits=$(get_commits_for_project $project_id)
-    
-    # Extract user names and count commits per user
-    echo "$commits" | jq -r '.[] | .author_name' | sort | uniq -c | while read -r count user; do
-      # Only process if a valid user name exists
-      if [[ -n "$user" ]]; then
-        echo -n "$count $user "
+    local project_user_list=()
+
+    # Extract user emails and count commits per user
+    for email in $(echo "$commits" | jq -r '.[] | .author_email'); do
+      if [[ -n "$email" ]]; then
+        project_user_list+=("$email")
         
         # Accumulate commit counts in the associative array
-        user_commit_count["$user"]=$(( ${user_commit_count["$user"]} + $count ))
+        user_commit_count["$email"]=$(( ${user_commit_count["$email"]} + 1 ))
       fi
     done
+
+    # Remove duplicate emails and return the comma-separated list of unique users (emails)
+    echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ',' | sed 's/,$//'
   }
+
 
   # Start writing to the output file
   echo "GitLab User Statistics" | tee "$OUTPUT_FILE"
@@ -63,7 +67,9 @@ function gitlab_user_statistics(){
     for project in $(get_projects_in_group $group | jq -r '.[].id'); do
       # Combine everything into one line: group ID, project ID, and commits
       echo -n "Group ID: $group, Project ID: $project, Commits: " | tee -a "$OUTPUT_FILE"
-      get_commit_count_per_user $project | tee -a "$OUTPUT_FILE"
+      project_users=$(get_commit_count_per_user $project)
+      commit_count=$(echo "$project_users" | tr ',' '\n' | wc -l)
+      echo "Users: $commit_count, Users List: $project_users" | tee -a "$OUTPUT_FILE"
       echo "" | tee -a "$OUTPUT_FILE"  # Add new line after each project's data
     done
   done
@@ -73,9 +79,9 @@ function gitlab_user_statistics(){
   echo "Final Summary of Users and Commit Counts:" | tee -a "$OUTPUT_FILE"
   echo "=========================================" | tee -a "$OUTPUT_FILE"
 
-  # Print user and their total commit counts
-  for user in "${!user_commit_count[@]}"; do
-    echo "$user: ${user_commit_count[$user]} commits" | tee -a "$OUTPUT_FILE"
+  # Print user emails and their total commit counts
+  for email in "${!user_commit_count[@]}"; do
+    echo "$email: ${user_commit_count[$email]} commits" | tee -a "$OUTPUT_FILE"
   done
 
   # Print total number of unique users
@@ -84,6 +90,9 @@ function gitlab_user_statistics(){
 
   echo "Statistics saved to $OUTPUT_FILE"
 }
+
+
+
 
 function git_add_file() {
   local GIT_URL=$1
