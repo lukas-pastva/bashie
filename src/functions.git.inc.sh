@@ -1,5 +1,90 @@
 #!/bin/bash
 
+function gitlab_user_statistics(){
+
+  # Prompt user for GitLab URL and Access Token
+  read -p "Enter GitLab URL (e.g., https://gitlab.yourdomain.com): " GITLAB_URL
+  read -s -p "Enter your GitLab Access Token: " PRIVATE_TOKEN
+  echo # To add a newline after the token prompt
+
+  # Set the output file name
+  OUTPUT_FILE="gitlab_stats.txt"
+
+  # Date range for last month's activity (Adjust as necessary)
+  SINCE_DATE=$(date -d "1 month ago" +"%Y-%m-%dT00:00:00Z")
+  UNTIL_DATE=$(date +"%Y-%m-%dT23:59:59Z")
+
+  # Declare an associative array to hold commit counts per user
+  declare -A user_commit_count
+
+  # Function to get all groups
+  get_groups() {
+    curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/groups?per_page=100"
+  }
+
+  # Function to get all projects in a group
+  get_projects_in_group() {
+    local group_id=$1
+    curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/groups/$group_id/projects?per_page=100"
+  }
+
+  # Function to get all commits for a project in the last month
+  get_commits_for_project() {
+    local project_id=$1
+    curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/projects/$project_id/repository/commits?since=$SINCE_DATE&until=$UNTIL_DATE&per_page=100"
+  }
+
+  # Function to collect user commits for a project and accumulate totals
+  get_commit_count_per_user() {
+    local project_id=$1
+    local commits=$(get_commits_for_project $project_id)
+    
+    # Extract user names and count commits per user
+    echo "$commits" | jq -r '.[] | .author_name' | sort | uniq -c | while read -r count user; do
+      # Only process if a valid user name exists
+      if [[ -n "$user" ]]; then
+        echo -n "$count $user "
+        
+        # Accumulate commit counts in the associative array
+        user_commit_count["$user"]=$(( ${user_commit_count["$user"]} + $count ))
+      fi
+    done
+  }
+
+  # Start writing to the output file
+  echo "GitLab User Statistics" | tee "$OUTPUT_FILE"
+  echo "Date range: $SINCE_DATE to $UNTIL_DATE" | tee -a "$OUTPUT_FILE"
+  echo "=============================================" | tee -a "$OUTPUT_FILE"
+
+  # Loop through all groups and projects, and count commits for each user
+  echo "Fetching groups and repositories..." | tee -a "$OUTPUT_FILE"
+
+  for group in $(get_groups | jq -r '.[].id'); do
+    for project in $(get_projects_in_group $group | jq -r '.[].id'); do
+      # Combine everything into one line: group ID, project ID, and commits
+      echo -n "Group ID: $group, Project ID: $project, Commits: " | tee -a "$OUTPUT_FILE"
+      get_commit_count_per_user $project | tee -a "$OUTPUT_FILE"
+      echo "" | tee -a "$OUTPUT_FILE"  # Add new line after each project's data
+    done
+  done
+
+  # Print the final summary of users and commit counts
+  echo "" | tee -a "$OUTPUT_FILE"
+  echo "Final Summary of Users and Commit Counts:" | tee -a "$OUTPUT_FILE"
+  echo "=========================================" | tee -a "$OUTPUT_FILE"
+
+  # Print user and their total commit counts
+  for user in "${!user_commit_count[@]}"; do
+    echo "$user: ${user_commit_count[$user]} commits" | tee -a "$OUTPUT_FILE"
+  done
+
+  # Print total number of unique users
+  echo "" | tee -a "$OUTPUT_FILE"
+  echo "Total number of unique users: ${#user_commit_count[@]}" | tee -a "$OUTPUT_FILE"
+
+  echo "Statistics saved to $OUTPUT_FILE"
+}
+
 function git_add_file() {
   local GIT_URL=$1
   local GIT_REPO="${GIT_URL##*/}"
