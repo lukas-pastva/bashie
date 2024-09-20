@@ -1,5 +1,7 @@
 #!/bin/bash
 
+declare -A user_commit_count  # Declare globally to ensure it's accessible throughout the script
+
 function gitlab_user_statistics(){
 
   # Prompt user for GitLab URL and Access Token
@@ -13,9 +15,6 @@ function gitlab_user_statistics(){
   # Date range for last month's activity (Adjust as necessary)
   SINCE_DATE=$(date -d "1 month ago" +"%Y-%m-%dT00:00:00Z")
   UNTIL_DATE=$(date +"%Y-%m-%dT23:59:59Z")
-
-  # Declare an associative array to hold commit counts per user (email)
-  declare -A user_commit_count
 
   # Function to get all groups
   get_groups() {
@@ -40,34 +39,27 @@ function gitlab_user_statistics(){
     curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/projects/$project_id/repository/commits?since=$SINCE_DATE&until=$UNTIL_DATE&per_page=100"
   }
 
-  # Function to collect user commits for a project and accumulate totals
+  # Function to collect user commits and accumulate totals for both users and commits
   get_commit_count_per_user() {
     local project_id=$1
     local commits=$(get_commits_for_project $project_id)
     local project_user_list=()
+    local total_commits=0  # Variable to hold the total number of commits for this repo
 
     # Extract user emails and count commits per user
     for email in $(echo "$commits" | jq -r '.[] | .author_email'); do
-      # Trim the email and ensure it's not empty or invalid
       email=$(echo "$email" | xargs)  # Trim whitespace
-
-      # Check if email matches a valid pattern
+      # Validate the email and count commits
       if [[ -n "$email" && "$email" != "null" && "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         project_user_list+=("$email")
-        
-        # Accumulate commit counts in the associative array
         user_commit_count["$email"]=$(( ${user_commit_count["$email"]} + 1 ))
       fi
+      total_commits=$((total_commits + 1))  # Count the commit
     done
 
-    # Check if project_user_list is empty before creating a comma-separated list
-    if [[ ${#project_user_list[@]} -eq 0 ]]; then
-      echo ""  # Return an empty string if no users were found
-    else
-      # Remove duplicate emails and return the comma-separated list of unique users (emails)
-      local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ', ' | sed 's/, $//')
-      echo "$unique_emails"
-    fi
+    # Return the unique email list and total commit count
+    local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ', ' | sed 's/, $//')
+    echo "$unique_emails,$total_commits"  # Returning users and total commits
   }
 
   # Start writing to the output file
@@ -85,9 +77,12 @@ function gitlab_user_statistics(){
       project_name=$(echo "$project_details" | jq -r '.name')
       project_path=$(echo "$project_details" | jq -r '.path_with_namespace')
 
-      # Call the function to get the list of unique users (emails)
-      project_users=$(get_commit_count_per_user $project)
-      
+      # Call the function to get the list of unique users (emails) and total commits
+      project_stats=$(get_commit_count_per_user $project)
+      project_users=$(echo "$project_stats" | cut -d ',' -f1)  # Extract user list
+      total_commits=$(echo "$project_stats" | cut -d ',' -f2)  # Extract total commit count
+      echo "debug: Users - $project_users, Total Commits - $total_commits"
+
       # If project_users is empty, set commit_count to 0; otherwise, count the users
       if [[ -z "$project_users" ]]; then
         commit_count=0
@@ -95,8 +90,8 @@ function gitlab_user_statistics(){
         commit_count=$(echo "$project_users" | tr ',' '\n' | grep -v '^$' | wc -l)  # Ensure no empty lines are counted
       fi
 
-      # Output project details, users, and other information
-      echo "Group ID: $group, Project ID: $project, Project Path: $project_path, Project Name: $project_name, Users: $commit_count" | tee -a "$OUTPUT_FILE"
+      # Output project details, users, total commits, and other information
+      echo "Group ID: $group, Project ID: $project, Project Path: $project_path, Project Name: $project_name, Users: $commit_count, Total Commits: $total_commits" | tee -a "$OUTPUT_FILE"
 
       # Output user list (if any) on a new line
       if [[ -n "$project_users" ]]; then
@@ -123,6 +118,7 @@ function gitlab_user_statistics(){
 
   echo "Statistics saved to $OUTPUT_FILE"
 }
+
 
 
 function git_add_file() {
