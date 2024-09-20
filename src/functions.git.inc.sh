@@ -1,14 +1,17 @@
 #!/bin/bash
 
-declare -A user_commit_count  # Declare globally to ensure it's accessible throughout the script
-total_commits=0  # Global variable to hold the total commits
+function gitlab_user_statistics() {
 
-function gitlab_user_statistics(){
+  # Declare global variables within the function
+  declare -A user_commit_count  # Declare globally to ensure it's accessible throughout the script
+  total_commits=0               # Global variable to hold the total commits
+  project_users=""              # Global variable to hold project users
+  project_commit_count=0        # Global variable to hold commits per project
 
   # Prompt user for GitLab URL and Access Token
   read -p "Enter GitLab URL (e.g., https://gitlab.yourdomain.com): " GITLAB_URL
   read -s -p "Enter your GitLab Access Token: " PRIVATE_TOKEN
-  echo # To add a newline after the token prompt
+  echo    # To add a newline after the token prompt
 
   # Set the output file name
   OUTPUT_FILE="gitlab_stats.txt"
@@ -17,15 +20,39 @@ function gitlab_user_statistics(){
   SINCE_DATE=$(date -d "1 month ago" +"%Y-%m-%dT00:00:00Z")
   UNTIL_DATE=$(date +"%Y-%m-%dT23:59:59Z")
 
+  # Function to get all items across all pages
+  get_all_items() {
+    local url="$1"
+    local items=()
+    local page=1
+    local per_page=100
+
+    while :; do
+      response=$(curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$url&page=$page&per_page=$per_page")
+      item_count=$(echo "$response" | jq 'length')
+
+      if [[ $item_count -eq 0 ]]; then
+        break
+      fi
+
+      items+=($(echo "$response" | jq -r '.[].id'))
+      ((page++))
+    done
+
+    echo "${items[@]}"
+  }
+
   # Function to get all groups
   get_groups() {
-    curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/groups?per_page=100"
+    local url="$GITLAB_URL/api/v4/groups?"
+    get_all_items "$url"
   }
 
   # Function to get all projects in a group
   get_projects_in_group() {
     local group_id=$1
-    curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/groups/$group_id/projects?per_page=100"
+    local url="$GITLAB_URL/api/v4/groups/$group_id/projects?"
+    get_all_items "$url"
   }
 
   # Function to get project details (path and name)
@@ -37,32 +64,52 @@ function gitlab_user_statistics(){
   # Function to get all commits for a project in the last month
   get_commits_for_project() {
     local project_id=$1
-    curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/projects/$project_id/repository/commits?since=$SINCE_DATE&until=$UNTIL_DATE&per_page=100"
+    local commits=()
+    local page=1
+    local per_page=100
+
+    while :; do
+      response=$(curl --silent --header "PRIVATE-TOKEN: $PRIVATE_TOKEN" "$GITLAB_URL/api/v4/projects/$project_id/repository/commits?since=$SINCE_DATE&until=$UNTIL_DATE&page=$page&per_page=$per_page")
+      commit_count=$(echo "$response" | jq 'length')
+
+      if [[ $commit_count -eq 0 ]]; then
+        break
+      fi
+
+      commits+=($(echo "$response" | jq -r '.[] | @base64'))
+      ((page++))
+    done
+
+    echo "${commits[@]}"
   }
 
   # Function to collect user commits and accumulate totals for both users and commits
   get_commit_count_per_user() {
     local project_id=$1
-    local commits=$(get_commits_for_project $project_id)
+    local commits_encoded=($(get_commits_for_project $project_id))
     local project_user_list=()
 
+    # Initialize project commit count
+    project_commit_count=0
+
     # Extract user emails and count commits per user
-    for email in $(echo "$commits" | jq -r '.[] | .author_email'); do
+    for commit_enc in "${commits_encoded[@]}"; do
+      commit=$(echo "$commit_enc" | base64 --decode)
+      email=$(echo "$commit" | jq -r '.author_email')
       email=$(echo "$email" | xargs)  # Trim whitespace
+
       # Validate the email and count commits
       if [[ -n "$email" && "$email" != "null" && "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         project_user_list+=("$email")
         user_commit_count["$email"]=$(( ${user_commit_count["$email"]} + 1 ))
-
-        # Debug output: Show email and current number of unique users
-        echo "DEBUG: Added user '$email'. Total unique users so far: ${#user_commit_count[@]}"
       fi
-      total_commits=$((total_commits + 1))  # Increment total commit count globally
+      total_commits=$((total_commits + 1))                # Increment total commit count globally
+      project_commit_count=$((project_commit_count + 1))  # Increment project commit count
     done
 
-    # Return the list of unique users
+    # Create a comma-separated list of unique emails
     local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ', ' | sed 's/, $//')
-    echo "$unique_emails"  # Return unique emails for this project
+    project_users="$unique_emails"  # Set the global variable
   }
 
   # Start writing to the output file
@@ -73,17 +120,18 @@ function gitlab_user_statistics(){
   # Loop through all groups and projects, and count commits for each user
   echo "Fetching groups and repositories..." | tee -a "$OUTPUT_FILE"
 
-  for group in $(get_groups | jq -r '.[].id'); do
-    for project in $(get_projects_in_group $group | jq -r '.[].id'); do
+  group_ids=($(get_groups))
+
+  for group in "${group_ids[@]}"; do
+    project_ids=($(get_projects_in_group $group))
+    for project in "${project_ids[@]}"; do
       # Get project details (name and path)
       project_details=$(get_project_details $project)
       project_name=$(echo "$project_details" | jq -r '.name')
       project_path=$(echo "$project_details" | jq -r '.path_with_namespace')
 
-      # Call the function to get the list of unique users (emails)
-      project_users=$(get_commit_count_per_user $project)
-
-      echo "debug: Users - $project_users, Total Commits - $total_commits"
+      # Call the function without command substitution
+      get_commit_count_per_user $project
 
       # If project_users is empty, set commit_count to 0; otherwise, count the users
       if [[ -z "$project_users" ]]; then
@@ -93,7 +141,8 @@ function gitlab_user_statistics(){
       fi
 
       # Output project details, users, total commits, and other information
-      echo "Group ID: $group, Project ID: $project, Project Path: $project_path, Project Name: $project_name, Users: $commit_count, Total Commits: $total_commits" | tee -a "$OUTPUT_FILE"
+      echo "Group ID: $group, Project ID: $project, Project Path: $project_path, Project Name: $project_name" | tee -a "$OUTPUT_FILE"
+      echo "Users: $commit_count, Commits in Project: $project_commit_count" | tee -a "$OUTPUT_FILE"
 
       # Output user list (if any) on a new line
       if [[ -n "$project_users" ]]; then
