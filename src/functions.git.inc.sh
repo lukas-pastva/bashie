@@ -48,7 +48,11 @@ function gitlab_user_statistics(){
 
     # Extract user emails and count commits per user
     for email in $(echo "$commits" | jq -r '.[] | .author_email'); do
-      if [[ -n "$email" && "$email" != "null" ]]; then  # Ignore empty or null emails
+      # Trim the email and ensure it's not empty or invalid
+      email=$(echo "$email" | xargs)  # Trim whitespace
+
+      # Check if email matches a valid pattern
+      if [[ -n "$email" && "$email" != "null" && "$email" =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
         project_user_list+=("$email")
         
         # Accumulate commit counts in the associative array
@@ -56,11 +60,14 @@ function gitlab_user_statistics(){
       fi
     done
 
-    # Remove duplicate emails and return the comma-separated list of unique users (emails)
-    local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ', ' | sed 's/, $//')
-
-    # Return the unique email list or explicitly return an empty string if no users were found
-    echo "$unique_emails"
+    # Check if project_user_list is empty before creating a comma-separated list
+    if [[ ${#project_user_list[@]} -eq 0 ]]; then
+      echo ""  # Return an empty string if no users were found
+    else
+      # Remove duplicate emails and return the comma-separated list of unique users (emails)
+      local unique_emails=$(echo "${project_user_list[@]}" | tr ' ' '\n' | sort -u | tr '\n' ', ' | sed 's/, $//')
+      echo "$unique_emails"
+    fi
   }
 
   # Start writing to the output file
@@ -85,7 +92,7 @@ function gitlab_user_statistics(){
       if [[ -z "$project_users" ]]; then
         commit_count=0
       else
-        commit_count=$(echo "$project_users" | tr ',' '\n' | wc -l)
+        commit_count=$(echo "$project_users" | tr ',' '\n' | grep -v '^$' | wc -l)  # Ensure no empty lines are counted
       fi
 
       # Output project details, users, and other information
@@ -94,7 +101,7 @@ function gitlab_user_statistics(){
       # Output user list (if any) on a new line
       if [[ -n "$project_users" ]]; then
         echo "Users List:" | tee -a "$OUTPUT_FILE"
-        echo "$project_users" | tr ',' '\n' | sed 's/^/ - /' | tee -a "$OUTPUT_FILE"
+        echo "$project_users" | tr ',' '\n' | grep -v '^$' | sed 's/^/ - /' | tee -a "$OUTPUT_FILE"  # Exclude empty lines
       fi
       echo "" | tee -a "$OUTPUT_FILE"  # Add new line after each project's data
     done
@@ -116,7 +123,6 @@ function gitlab_user_statistics(){
 
   echo "Statistics saved to $OUTPUT_FILE"
 }
-
 
 
 function git_add_file() {
