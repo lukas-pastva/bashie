@@ -52,3 +52,4 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     mv kubectl /usr/local/bin/kubectl
 
 WORKDIR /tmp/app
+COPY src/ /tmp/app
