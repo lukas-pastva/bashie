@@ -1,7 +1,7 @@
 #!/bin/bash
 
-source /functions.git.inc.sh 2>/dev/null || true
-source /functions.vault.inc.sh 2>/dev/null || true
+source functions.git.inc.sh 2>/dev/null || true
+source functions.vault.inc.sh 2>/dev/null || true
 
 # Enable debugging if DEBUG environment variable is set
 if [ "$DEBUG" = "true" ]; then
