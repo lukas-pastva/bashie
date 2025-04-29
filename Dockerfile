@@ -30,23 +30,24 @@ RUN apt-get update -qq && \
         s3cmd \
         s3fs \
         openssh-client \
-        swaks && \
+        swaks \
+        openssl \
+        libnet-ssleay-perl \
+        libio-socket-ssl-perl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-ENV DEBIAN_FRONTEND=
-
-# Download and Install Terraform
+# Terraform
 ARG TERRAFORM_VERSION="1.7.4"
 RUN wget https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
     && unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip -d /usr/bin \
     && rm terraform_${TERRAFORM_VERSION}_linux_amd64.zip
 
-# Install yq
+# yq
 RUN wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && \
     chmod +x /usr/bin/yq
 
-# Install kubectl
+# kubectl
 RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" && \
     chmod +x kubectl && \
     mv kubectl /usr/local/bin/kubectl
