@@ -52,5 +52,11 @@ RUN curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/s
     chmod +x kubectl && \
     mv kubectl /usr/local/bin/kubectl
 
+# Argo CD CLI
+ARG ARGOCD_VERSION="2.14.11"
+RUN curl -sSL -o /usr/local/bin/argocd \
+      "https://github.com/argoproj/argo-cd/releases/download/v${ARGOCD_VERSION}/argocd-linux-amd64" && \
+    chmod +x /usr/local/bin/argocd
+
 WORKDIR /tmp/app
 COPY src/ /tmp/app
