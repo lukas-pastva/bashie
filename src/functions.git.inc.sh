@@ -1,5 +1,10 @@
 #!/bin/bash
 
+# -----------------------------------------------------------------
+#  debug logger – prints only when you run with  DEBUG=1 …
+# -----------------------------------------------------------------
+_dbg() { [[ -n "${DEBUG:-}" ]] && echo "[${FUNCNAME[1]}] $*" >&2; }
+
 function gitlab_user_statistics() {
 
   # Declare global variables within the function
@@ -427,110 +432,140 @@ function git_set_remote() {
 
 function github_backup() {
 
-  export GIT_TERMINAL_PROMPT=0
+  export GIT_TERMINAL_PROMPT=0          # never prompt for username/pw
 
-  _log() { [[ -n "${DEBUG:-}" ]] && echo "[${FUNCNAME[1]}] $*" >&2; }
-
-  _clone_branches() {                # $1 remote   $2 dir
-      local remote=$1 dir=$2
+  ##################################################################
+  # helpers
+  ##################################################################
+  _clone_branches() {                    # $1 remote  $2 dest dir
+      local remote=$1 dest=$2
       git ls-remote --heads "$remote" | awk '{print $2}' | sed 's#refs/heads/##' |
       while read -r br; do
-        mkdir -p "${dir}/${br//[\/:]/_}"
-        git clone --quiet --branch "$br" --single-branch "$remote" "${dir}/${br//[\/:]/_}" \
-             >/dev/null 2>&1 || _log "clone failed $br"
+          local safe=${br//[\/:]/_}
+          mkdir -p "$dest/$safe"
+          git clone --quiet --branch "$br" --single-branch "$remote" "$dest/$safe" \
+               >/dev/null 2>&1 || _dbg "git clone failed on branch $br"
       done
   }
 
-  _backup_paged() {                  # $1 endpoint w/o ?per_page  $2 outfile
+  _paged_json() {                        # $1 endpoint-without-?  $2 outfile
       local ep=$1 out=$2 page=1 buf='[]'
       while : ; do
-        local url="${ep}?per_page=100&page=${page}"
-        local resp; resp=$(curl -s -w "%{http_code}" -H "Authorization: token $github_token" "$url")
-        local code=${resp: -3} body=${resp::-3}
-        [[ $code == 200 ]] || { _log "HTTP $code → skip $url"; break; }
-        [[ "$(echo "$body" | jq -r 'type')" == array ]] || break
-        [[ $(echo "$body" | jq 'length') -eq 0 ]] && break
-        buf=$(jq -s 'add' <(echo "$buf") <(echo "$body")); ((page++))
+          local url="${ep}?per_page=100&page=${page}"
+          _dbg "GET  $url"
+          local rsp; rsp=$(curl -s -w "%{http_code}" -H "Authorization: token $github_token" "$url")
+          local code=${rsp: -3} body=${rsp::-3}
+          _dbg "HTTP $code  body preview: $(echo "$body" | head -c120 | tr '\n' ' ')…"
+
+          [[ "$code" != "200" ]] && { _dbg "non-200, stop paging"; break; }
+          [[ "$(echo "$body" | jq -r 'type')" != "array" ]] && { _dbg "payload not array, stop paging"; break; }
+
+          [[ "$(echo "$body" | jq 'length')" -eq 0 ]] && break
+          buf=$(jq -s 'add' <(echo "$buf") <(echo "$body"))
+          ((page++))
       done
-      [[ $(echo "$buf" | jq 'length') -gt 0 ]] && printf '%s' "$buf" > "$out"
+      [[ "$(echo "$buf" | jq 'length')" -gt 0 ]] && printf '%s' "$buf" > "$out"
   }
 
+  ##################################################################
+  # prompts
+  ##################################################################
   : "${github_token:=$(read -rp 'GitHub Personal Access Token: ' t && echo "$t")}"
   : "${github_user:=$(read -rp 'GitHub username / org: ' u && echo "$u")}"
   : "${REPO_SCOPE:=owner}"
   local ts; ts=$(date +%Y-%m-%d_%H-%M-%S)
 
-  # dirs ------------------------------------------------------------------
+  ##################################################################
+  # destination dirs
+  ##################################################################
   if [[ -z ${backup_dir:-} ]]; then
       root="/tmp/backup/files"; zip_dir="/tmp/backup/zip"
   else
       case "$backup_dir" in
-        "/"|"/mnt"|"/home"|"/root"|"/etc"|"/var"|"/usr"|"/bin"|"/sbin"|"/lib"|"/lib64"|"/opt")
-            echo "ERR: backup_dir cannot be critical"; return 1 ;;
-        *)  root="$backup_dir/files"; zip_dir="$backup_dir/zip" ;;
+          "/"|"/mnt"|"/home"|"/root"|"/etc"|"/var"|"/usr"|"/bin"|"/sbin"|"/lib"|"/lib64"|"/opt")
+              echo "ERR: backup_dir cannot be critical"; return 1 ;;
+          *)  root="$backup_dir/files"; zip_dir="$backup_dir/zip" ;;
       esac
   fi
   mkdir -p "$root"
 
-  # choose user vs org endpoint ------------------------------------------
+  ##################################################################
+  # decide user vs org endpoint
+  ##################################################################
   local api
   if curl -sI "https://api.github.com/orgs/$github_user" | grep -q '^Status: 200'; then
-       api="https://api.github.com/orgs/$github_user/repos"; [[ -z $REPO_SCOPE ]] && REPO_SCOPE=all
-  else api="https://api.github.com/users/$github_user/repos"
+      api="https://api.github.com/orgs/$github_user/repos"
+      [[ -z "$REPO_SCOPE" ]] && REPO_SCOPE=all
+  else
+      api="https://api.github.com/users/$github_user/repos"
   fi
 
-  # iterate repos ---------------------------------------------------------
+  ##################################################################
+  # iterate repo pages
+  ##################################################################
   local page=1
   while : ; do
       local url="${api}?type=${REPO_SCOPE}&per_page=100&page=${page}"
-      local repos; repos=$(curl -s -H "Authorization: token $github_token" "$url")
-      [[ $(echo "$repos" | jq 'length') -eq 0 ]] && break
+      _dbg "LIST $url"
+      local rsp; rsp=$(curl -s -w "%{http_code}" -H "Authorization: token $github_token" "$url")
+      local code=${rsp: -3} body=${rsp::-3}
+      _dbg "HTTP $code  body preview: $(echo "$body" | head -c120 | tr '\n' ' ')…"
 
-      echo "$repos" | jq -c '.[]' |
-      while read -r repo; do
-          local full; full=$(echo "$repo" | jq -r '.full_name')
+      [[ "$code" != "200" ]] && { _dbg "non-200, stop repo pagination"; break; }
+      [[ "$(echo "$body" | jq -r 'type')" != "array" ]] && { _dbg "payload not array, stop"; break; }
+      [[ "$(echo "$body" | jq 'length')" -eq 0 ]] && break
+
+      echo "$body" | jq -c '.[]' | while read -r repo_raw; do
+          if [[ "$(echo "$repo_raw" | jq -r 'type')" != "object" ]]; then
+              _dbg "⚠️  skipping non-object entry: $repo_raw"; continue
+          fi
+          local full; full=$(echo "$repo_raw" | jq -r '.full_name')
           echo "➡  $full"
-          local remote="https://${github_token}@github.com/${full}.git"
 
+          local remote="https://${github_token}@github.com/${full}.git"
           local repo_dir="$root/_repositories/$full"
           local mir_dir="$root/_mirror/$full"
           mkdir -p "$repo_dir" "$mir_dir"
 
           _clone_branches "$remote" "$repo_dir"
-          git clone --quiet --mirror "$remote" "$mir_dir" >/dev/null 2>&1 || _log "mirror fail $full"
+          git clone --quiet --mirror "$remote" "$mir_dir" >/dev/null 2>&1 || \
+              _dbg "mirror clone failed $full"
 
-          # meta -----------------------------------------------------------
+          # -------- metadata ---------------------------------------------
           local m="$root/_metadata/$full"; mkdir -p "$m"
           curl -s -H "Authorization: token $github_token" \
                "https://api.github.com/repos/$full" > "$m/repo.json"
 
           for ep in issues pulls; do
-              _backup_paged "https://api.github.com/repos/$full/${ep}?state=all" "$m/${ep}.json"
+              _paged_json "https://api.github.com/repos/$full/${ep}?state=all" "$m/${ep}.json"
           done
           [[ -s "$m/issues.json" ]] && jq -c '.[]' "$m/issues.json" |
               while read -r i; do
-                  _backup_paged "https://api.github.com/repos/$full/issues/$(echo "$i" | jq -r '.number')/comments" \
-                                "$m/issue_$(echo "$i" | jq -r '.number')_comments.json"
+                  _paged_json "https://api.github.com/repos/$full/issues/$(echo "$i" | jq -r '.number')/comments" \
+                              "$m/issue_$(echo "$i" | jq -r '.number')_comments.json"
               done
           [[ -s "$m/pulls.json" ]] && jq -c '.[]' "$m/pulls.json" |
               while read -r p; do
-                  num=$(echo "$p" | jq -r '.number')
-                  _backup_paged "https://api.github.com/repos/$full/pulls/$num/reviews"  "$m/pr_${num}_reviews.json"
-                  _backup_paged "https://api.github.com/repos/$full/pulls/$num/comments" "$m/pr_${num}_comments.json"
+                  local num; num=$(echo "$p" | jq -r '.number')
+                  _paged_json "https://api.github.com/repos/$full/pulls/$num/reviews"  "$m/pr_${num}_reviews.json"
+                  _paged_json "https://api.github.com/repos/$full/pulls/$num/comments" "$m/pr_${num}_comments.json"
               done
-          _backup_paged "https://api.github.com/repos/$full/releases" "$m/releases.json"
+          _paged_json "https://api.github.com/repos/$full/releases" "$m/releases.json"
 
-          # wiki -----------------------------------------------------------
+          # -------- wiki --------------------------------------------------
           if git ls-remote --exit-code --heads "https://github.com/${full}.wiki.git" >/dev/null 2>&1; then
               local w="$root/_wiki/$full"; mkdir -p "$w"
-              git clone --quiet --mirror "https://${github_token}@github.com/${full}.wiki.git" "$w" >/dev/null 2>&1
+              git clone --quiet --mirror "https://${github_token}@github.com/${full}.wiki.git" "$w" \
+                   >/dev/null 2>&1 || _dbg "wiki clone failed $full"
           fi
       done
       ((page++))
   done
 
-  # archive & clean --------------------------------------------------------
-  echo "Zipping ..."
+  ##################################################################
+  # archive + cleanup
+  ##################################################################
+  echo "Zipping …"
   mkdir -p "$zip_dir"
   local zip="$zip_dir/github_backup_${github_user}_${ts}.zip"
   (cd "$root" && zip -q -r "$zip" . -x '*.zip')
