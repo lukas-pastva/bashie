@@ -266,65 +266,93 @@ function gitlab_backup() {
     done
   }
 
+  ############################################################
+  #  SAFER git-lab clone-recursive – paste inside gitlab_backup
+  ############################################################
   _clone_recursive() {
     local backup_root_dir=$1
     local current_group_id=$2
     local parent_dir=$3
 
+    ########## 1) projects in this group #################################
     local page=1
     while : ; do
-      local projects_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/projects?include_subgroups=false&with_shared=false&per_page=100&page=$page")
-      local project_count=$(echo "$projects_response" | jq '. | length')
-      if [[ "$project_count" -eq 0 ]]; then break; fi
-      
-      echo "$projects_response" | jq -c '.[]' | while IFS= read -r project_to_fix; do
+      local url="${gitlab_url}/api/v4/groups/${current_group_id}/projects?include_subgroups=false&with_shared=false&per_page=100&page=${page}"
+      _dbg "GET  $url"
+      local rsp; rsp=$(curl -s -w "%{http_code}" -H "PRIVATE-TOKEN: $gitlab_private_token" "$url")
+      local http=${rsp: -3} body=${rsp::-3}
+      _dbg "HTTP $http  body preview: $(echo "$body" | head -c120 | tr '\n' ' ')…"
 
-        local project=$(echo "$project_to_fix" | sed -E 's/"description_html":"([^"]*)"/"description_html":"\1"/g' | sed 's/\(description_html[^"]*:[^"]*\)"\([^"]*\)"/\1\\"/g')
-        local project_id=$(echo $project | jq -r '.id')
-        local project_path="$(echo $project | jq -r '.path_with_namespace')"
-        local http_url_to_repo=$(echo $project | jq -r '.http_url_to_repo')
-        local clone_dir="$backup_root_dir/_repositories/${project_path}"
+      [[ "$http" != "200" ]] && { echo "[WARN] $url → $http, skipping this page"; break; }
+      [[ "$(echo "$body" | jq -r 'type')" != "array" ]] && { echo "[WARN] $url did not return an array – skipping"; break; }
+      [[ "$(echo "$body" | jq 'length')" -eq 0 ]] && break   # no more items
 
-        echo "Project: ${project_path}"
-        
-        mkdir -p "$clone_dir"
-        local modified_clone_url=$(echo "$http_url_to_repo" | sed "s|https://|https://user:$gitlab_private_token@|")
-        _clone_branches "$modified_clone_url" "$clone_dir"
+      echo "$body" | jq -c '.[]' | while read -r raw; do
+        # some HTML descriptions break JSON – light clean-up
+        local proj
+        proj=$(echo "$raw" |
+               sed -E 's/"description_html":"([^"]*)"/"description_html":"\1"/g' |
+               sed 's/\(description_html[^"]*:[^"]*\)"\([^"]*\)"/\1\\"/g')
 
+        # verify we still have a proper object with numeric id
+        if [[ "$(echo "$proj" | jq -r 'type')" != "object" ]] || \
+           ! echo "$proj" | jq -e '.id | numbers' >/dev/null; then
+            _dbg "⚠️  malformed entry – skipped: $(echo "$proj" | jq -c '.')"
+            continue
+        fi
 
-        local mirror_dir="${backup_root_dir}/_mirror/${project_path}"
-        mkdir -p "$mirror_dir"
-        git clone --quiet --mirror "$modified_clone_url" "$mirror_dir" > /dev/null 2>&1
+        local project_id project_path repo_url
+        project_id=$(echo "$proj"  | jq -r '.id')
+        project_path=$(echo "$proj" | jq -r '.path_with_namespace')
+        repo_url=$(echo "$proj"    | jq -r '.http_url_to_repo')
 
-        _backup_data "variables" $project_id $project_path $parent_dir "/projects/${project_id}/variables"
-        _backup_data "pipeline_schedules" $project_id $project_path $backup_root_dir "/projects/${project_id}/pipeline_schedules"
-        _backup_data "wikis" $project_id $project_path $parent_dir "/projects/${project_id}/wikis"
-        _backup_data "merge_requests" $project_id $project_path $parent_dir "/projects/${project_id}/merge_requests?state=all"
-        _backup_data "snippets" $project_id $project_path $parent_dir "/projects/${project_id}/snippets"
-        _backup_data "issues" $project_id $project_path $backup_root_dir "/projects/${project_id}/issues?with_labels_details=true&include_subscribed=true&per_page=100"
+        echo "Project: $project_path"
+
+        if [[ -z "$repo_url" || "$repo_url" == "null" ]]; then
+            echo "[WARN]  $project_path has no repository URL – skipping code clone"
+        else
+            local clone_dir="$backup_root_dir/_repositories/$project_path"
+            mkdir -p "$clone_dir"
+            local remote="${repo_url/https:\/\//https:\/\/user:${gitlab_private_token}@}"
+            _clone_branches "$remote" "$clone_dir"
+
+            local mirror_dir="$backup_root_dir/_mirror/$project_path"
+            mkdir -p "$mirror_dir"
+            git clone --quiet --mirror "$remote" "$mirror_dir" >/dev/null 2>&1
+        fi
+
+        # ---------- metadata -------------------------------------------
+        _backup_data variables           "$project_id" "$project_path" "$parent_dir"      "/projects/${project_id}/variables"
+        _backup_data pipeline_schedules  "$project_id" "$project_path" "$backup_root_dir" "/projects/${project_id}/pipeline_schedules"
+        _backup_data wikis               "$project_id" "$project_path" "$parent_dir"      "/projects/${project_id}/wikis"
+        _backup_data merge_requests      "$project_id" "$project_path" "$parent_dir"      "/projects/${project_id}/merge_requests?state=all"
+        _backup_data snippets            "$project_id" "$project_path" "$parent_dir"      "/projects/${project_id}/snippets"
+        _backup_data issues              "$project_id" "$project_path" "$backup_root_dir" "/projects/${project_id}/issues?with_labels_details=true&include_subscribed=true&per_page=100"
       done
-
       ((page++))
     done
 
+    ########## 2) recurse into sub-groups ################################
     page=1
     while : ; do
-        local subgroups_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/$current_group_id/subgroups?per_page=100&page=$page")
-        local subgroup_count=$(echo "$subgroups_response" | jq '. | length')
-        if [[ "$subgroup_count" -eq 0 ]]; then break; fi
+      local url="${gitlab_url}/api/v4/groups/${current_group_id}/subgroups?per_page=100&page=${page}"
+      _dbg "GET  $url"
+      local rsp; rsp=$(curl -s -w "%{http_code}" -H "PRIVATE-TOKEN: $gitlab_private_token" "$url")
+      local http=${rsp: -3} body=${rsp::-3}
+      [[ "$http" != "200" ]] && { _dbg "HTTP $http – stop subgroup paging"; break; }
+      [[ "$(echo "$body" | jq -r 'type')" != "array" ]] && break
+      [[ "$(echo "$body" | jq 'length')" -eq 0 ]] && break
 
-        echo "$subgroups_response" | jq -c '.[]' | while read subgroup; do
-            local subgroup_id=$(echo $subgroup | jq -r '.id')
-            local group_path="$(echo $subgroup | jq -r '.full_path')"
+      echo "$body" | jq -c '.[]' | while read -r sg; do
+        local subgroup_id group_path
+        subgroup_id=$(echo "$sg" | jq -r '.id')
+        group_path=$(echo "$sg"  | jq -r '.full_path')
+        echo "Group: $group_path"
 
-            echo "Group: ${group_path}"
-
-            _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
-
-            _clone_recursive "${backup_root_dir}" "$subgroup_id" "$parent_dir"
-        done
-
-        ((page++))
+        _backup_data variables_group "$subgroup_id" "$group_path" "$backup_root_dir" "/groups/${subgroup_id}/variables"
+        _clone_recursive "$backup_root_dir" "$subgroup_id" "$parent_dir"
+      done
+      ((page++))
     done
   }
 
