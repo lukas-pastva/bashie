@@ -29,7 +29,7 @@ RUN curl -sL "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/sta
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
 # ── Argo CD CLI ─────────────────────────────────────────────────────────────
-ARG ARGOCD_VERSION="2.14.11"
+ARG ARGOCD_VERSION="3.0.3"
 RUN curl -sSL -o /usr/local/bin/argocd \
     "https://github.com/argoproj/argo-cd/releases/download/v${ARGOCD_VERSION}/argocd-linux-amd64" && \
     chmod +x /usr/local/bin/argocd
