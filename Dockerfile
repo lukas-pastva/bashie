@@ -3,6 +3,7 @@ FROM ubuntu:latest
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=Etc/UTC
 
+# ── Base packages ────────────────────────────────────────────────────────────
 RUN apt-get update -qq && \
     apt-get install -y -qq --no-install-recommends \
         software-properties-common && \
@@ -34,12 +35,23 @@ RUN curl -sSL -o /usr/local/bin/argocd \
     "https://github.com/argoproj/argo-cd/releases/download/v${ARGOCD_VERSION}/argocd-linux-amd64" && \
     chmod +x /usr/local/bin/argocd
 
-# ── Argo Workflows CLI (NEW) ────────────────────────────────────────────────
+# ── Argo Workflows CLI ──────────────────────────────────────────────────────
 ARG ARGO_VERSION="3.6.7"
 RUN curl -sSL -o /usr/local/bin/argo.gz \
     "https://github.com/argoproj/argo-workflows/releases/download/v${ARGO_VERSION}/argo-linux-amd64.gz" && \
     gunzip /usr/local/bin/argo.gz && \
-    chmod +x /usr/local/bin/argo   # `argo version` should now work
+    chmod +x /usr/local/bin/argo            # argo version
 
+# ── Helm CLI (NEW) ──────────────────────────────────────────────────────────
+# Keep the version in one place for easy bumping
+ARG HELM_VERSION="3.14.4"
+RUN curl -sSL -o /tmp/helm.tgz \
+         "https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz" && \
+    tar -xzf /tmp/helm.tgz --strip-components=1 -C /usr/local/bin linux-amd64/helm && \
+    rm /tmp/helm.tgz && \
+    chmod +x /usr/local/bin/helm && \
+    helm version --short
+
+# ── Working dir & copy sources ──────────────────────────────────────────────
 WORKDIR /tmp/app
 COPY src/ /tmp/app
