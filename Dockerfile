@@ -30,13 +30,13 @@ RUN curl -sL "https://dl.k8s.io/release/$(curl -sL https://dl.k8s.io/release/sta
     -o /usr/local/bin/kubectl && chmod +x /usr/local/bin/kubectl
 
 # ── Argo CD CLI ─────────────────────────────────────────────────────────────
-ARG ARGOCD_VERSION="3.0.3"
+ARG ARGOCD_VERSION="3.1.0"
 RUN curl -sSL -o /usr/local/bin/argocd \
     "https://github.com/argoproj/argo-cd/releases/download/v${ARGOCD_VERSION}/argocd-linux-amd64" && \
     chmod +x /usr/local/bin/argocd
 
 # ── Argo Workflows CLI ──────────────────────────────────────────────────────
-ARG ARGO_VERSION="3.6.7"
+ARG ARGO_VERSION="3.7.1"
 RUN curl -sSL -o /usr/local/bin/argo.gz \
     "https://github.com/argoproj/argo-workflows/releases/download/v${ARGO_VERSION}/argo-linux-amd64.gz" && \
     gunzip /usr/local/bin/argo.gz && \
