@@ -223,7 +223,6 @@ function git_edit_file() {
   fi
   rm -rf /tmp/${GIT_REPO} || true
 }
-
 # Function to clone GitLab group repositories, including subgroups, maintaining hierarchy
 function gitlab_backup() {
   _backup_data() {
@@ -235,7 +234,8 @@ function gitlab_backup() {
       local backup_dir="${parent_dir}/_${entity}/${path}"
       local api_endpoint="${gitlab_url}/api/v4${endpoint_suffix}"
       
-      local backup_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "$api_endpoint")
+      local backup_response
+      backup_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "$api_endpoint")
       if [ ${#backup_response} -gt 3 ]; then
           mkdir -p "$backup_dir"
           echo -e "${backup_response}" > "${backup_dir}/${entity}.json"
@@ -243,9 +243,10 @@ function gitlab_backup() {
 
       if [ "$entity" == "issues" ]; then
           echo "$backup_response" | jq -c '.[]' | while IFS= read -r issue; do
-              local issue_iid=$(echo "$issue" | jq -r '.iid')
-              local project_id=$(echo "$issue" | jq -r '.project_id')
-              local issue_comments_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/${project_id}/issues/${issue_iid}/notes")
+              local issue_iid project_id issue_comments_response
+              issue_iid=$(echo "$issue" | jq -r '.iid')
+              project_id=$(echo "$issue" | jq -r '.project_id')
+              issue_comments_response=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/projects/${project_id}/issues/${issue_iid}/notes")
               if [[ -n "$issue_comments_response" && "$issue_comments_response" != "[]" ]]; then
                   echo "$issue_comments_response" > "${backup_dir}/issue_${issue_iid}_comments.json"
               fi
@@ -257,12 +258,14 @@ function gitlab_backup() {
     local repo_url=$1
     local clone_dir=$2
 
-    local branches=$(git ls-remote --heads $repo_url | awk '{print $2}' | sed 's#refs/heads/##')
+    local branches
+    branches=$(git ls-remote --heads "$repo_url" | awk '{print $2}' | sed 's#refs/heads/##')
     for branch in $branches; do
-      local sanitized_branch=$(echo $branch | sed 's/[\/:]/_/g')
-      local branch_dir="${clone_dir}/${sanitized_branch}"
+      local sanitized_branch branch_dir
+      sanitized_branch=$(echo "$branch" | sed 's/[\/:]/_/g')
+      branch_dir="${clone_dir}/${sanitized_branch}"
       mkdir -p "$branch_dir"
-      git clone --branch $branch --single-branch $repo_url $branch_dir > /dev/null 2>&1
+      git clone --branch "$branch" --single-branch "$repo_url" "$branch_dir" > /dev/null 2>&1
     done
   }
 
@@ -279,8 +282,9 @@ function gitlab_backup() {
     while : ; do
       local url="${gitlab_url}/api/v4/groups/${current_group_id}/projects?include_subgroups=false&with_shared=false&per_page=100&page=${page}"
       _dbg "GET  $url"
-      local rsp; rsp=$(curl -s -w "%{http_code}" -H "PRIVATE-TOKEN: $gitlab_private_token" "$url")
-      local http=${rsp: -3} body=${rsp::-3}
+      local rsp http body
+      rsp=$(curl -s -w "%{http_code}" -H "PRIVATE-TOKEN: $gitlab_private_token" "$url")
+      http=${rsp: -3} body=${rsp::-3}
       _dbg "HTTP $http  body preview: $(echo "$body" | head -c120 | tr '\n' ' ')…"
 
       [[ "$http" != "200" ]] && { echo "[WARN] $url → $http, skipping this page"; break; }
@@ -313,7 +317,8 @@ function gitlab_backup() {
         else
             local clone_dir="$backup_root_dir/_repositories/$project_path"
             mkdir -p "$clone_dir"
-            local remote="${repo_url/https:\/\//https:\/\/user:${gitlab_private_token}@}"
+            local remote
+            remote="${repo_url/https:\/\//https:\/\/user:${gitlab_private_token}@}"
             _clone_branches "$remote" "$clone_dir"
 
             local mirror_dir="$backup_root_dir/_mirror/$project_path"
@@ -337,8 +342,9 @@ function gitlab_backup() {
     while : ; do
       local url="${gitlab_url}/api/v4/groups/${current_group_id}/subgroups?per_page=100&page=${page}"
       _dbg "GET  $url"
-      local rsp; rsp=$(curl -s -w "%{http_code}" -H "PRIVATE-TOKEN: $gitlab_private_token" "$url")
-      local http=${rsp: -3} body=${rsp::-3}
+      local rsp http body
+      rsp=$(curl -s -w "%{http_code}" -H "PRIVATE-TOKEN: $gitlab_private_token" "$url")
+      http=${rsp: -3} body=${rsp::-3}
       [[ "$http" != "200" ]] && { _dbg "HTTP $http – stop subgroup paging"; break; }
       [[ "$(echo "$body" | jq -r 'type')" != "array" ]] && break
       [[ "$(echo "$body" | jq 'length')" -eq 0 ]] && break
@@ -356,19 +362,28 @@ function gitlab_backup() {
     done
   }
 
+  # --- helpers ---
+  _trim() { echo "$1" | sed -E 's/^[[:space:]]+|[[:space:]]+$//g'; }
+
   # init
-  local date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
-  if [[ ${gitlab_private_token} == "" ]]; then
-    echo "Enter your GitLab Private Token: " && read gitlab_private_token && export gitlab_private_token="${gitlab_private_token}"
+  local date_and_time
+  date_and_time=$(date +%Y-%m-%d_%H-%M-%S)
+
+  if [[ ${gitlab_private_token:-} == "" ]]; then
+    echo "Enter your GitLab Private Token: " && read -r gitlab_private_token && export gitlab_private_token="${gitlab_private_token}"
   fi
-  if [[ ${group_id} == "" ]]; then
-    echo "Enter your GitLab Group ID: " && read group_id && export group_id="${group_id}"
+  if [[ ${group_id:-} == "" ]]; then
+    echo "Enter your GitLab Group ID(s) (comma-separated for multiple): " && read -r group_id && export group_id="${group_id}"
   fi
-  if [[ ${gitlab_url} == "" ]]; then
+  if [[ ${gitlab_url:-} == "" ]]; then
     gitlab_url="https://gitlab.com"
   fi
-  if [[ ${backup_dir} == "" ]]; then
-    backup_root_dir="/tmp/backup/files" && zip_destination_dir="/tmp/backup/zip"
+
+  # base backup dirs (each group gets its own subdir inside)
+  local backup_root_base zip_destination_dir
+  if [[ ${backup_dir:-} == "" ]]; then
+    backup_root_base="/tmp/backup/files"
+    zip_destination_dir="/tmp/backup/zip"
   else
     case "${backup_dir}" in
       "/"|"/mnt"|"/c"|"/d"|"/e"|"/f"|"/home"|"/root"|"/etc"|"/var"|"/usr"|"/bin"|"/sbin"|"/lib"|"/lib64"|"/opt")
@@ -376,35 +391,77 @@ function gitlab_backup() {
         return 1
         ;;
       *)
-        backup_root_dir="${backup_dir}/files"
+        backup_root_base="${backup_dir}/files"
         zip_destination_dir="${backup_dir}/zip"
         ;;
     esac
   fi
+  mkdir -p "$backup_root_base" "$zip_destination_dir"
 
-  # chicken egg
-  local group_path=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${group_id}" | jq -r '.name')
-  _backup_data "variables_group" $group_id $group_path $backup_root_dir "/groups/${group_id}/variables"
-  _clone_recursive "${backup_root_dir}" "${group_id}" "${backup_root_dir}"
+  # --- support multiple group IDs separated by comma ---
+  IFS=',' read -r -a _group_ids_raw <<< "$group_id"
+  local _had_any=false
 
-  echo "Zipping ..."
-  mkdir -p ${zip_destination_dir} && zip -q -r "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "$backup_root_dir" -x "*.zip"
+  for _gid_raw in "${_group_ids_raw[@]}"; do
+    local gid
+    gid=$(_trim "$_gid_raw")
+    [[ -z "$gid" ]] && continue
 
-  echo "Cleanup ..."
-  if [[ "$backup_root_dir" == *"/files"* ]]; then
-    find "$backup_root_dir" -mindepth 1 -delete
-  else
-    echo "Cannot cleanup, directory does not contain '/files'"
+    _had_any=true
+
+    # per-group dirs (avoid collisions and allow per-group zip/cleanup)
+    local group_backup_dir="${backup_root_base}/group_${gid}"
+
+    # resolve group path / name for headers & structure
+    local group_meta
+    group_meta=$(curl -s -H "PRIVATE-TOKEN: $gitlab_private_token" "${gitlab_url}/api/v4/groups/${gid}")
+    local group_name http_check
+    group_name=$(echo "$group_meta" | jq -r '.name // empty')
+
+    if [[ -z "$group_name" || "$group_name" == "null" ]]; then
+      echo "[WARN] Cannot resolve group name for ID ${gid}. Skipping."
+      continue
+    fi
+
+    echo "===== Backing up Group ID ${gid} (${group_name}) ====="
+    mkdir -p "$group_backup_dir"
+
+    # top-level group variables
+    _backup_data "variables_group" "$gid" "$group_name" "$group_backup_dir" "/groups/${gid}/variables"
+
+    # recurse
+    _clone_recursive "$group_backup_dir" "$gid" "$group_backup_dir"
+
+    echo "Zipping group ${gid} ..."
+    mkdir -p "${zip_destination_dir}"
+    (cd "$(dirname "$group_backup_dir")" && zip -q -r "${zip_destination_dir}/gitlab_backup_group_${gid}_${date_and_time}.zip" "$(basename "$group_backup_dir")" -x "*.zip")
+
+    echo "Cleanup group ${gid} ..."
+    if [[ "$group_backup_dir" == *"/files/group_"* ]]; then
+      # remove only this group's folder to keep others
+      rm -rf "$group_backup_dir"
+    else
+      echo "Cannot cleanup, safety check failed for '$group_backup_dir'"
+    fi
+
+    if [ -n "${rclone_bucket:-}" ]; then
+      echo "RClone is enabled, uploading backup for group ${gid}"
+      rclone --config /tmp/rclone.conf copy \
+        "${zip_destination_dir}/gitlab_backup_group_${gid}_${date_and_time}.zip" \
+        "s3:${rclone_bucket}/gitlab/gitlab-backup_${gid}_${date_and_time}"
+    fi
+
+    echo "===== Done Group ${gid} ====="
+  done
+
+  if [[ "$_had_any" != "true" ]]; then
+    echo "[ERROR] No valid group IDs were provided."
+    return 1
   fi
 
-  if [ -n "$rclone_bucket" ]; then
-    echo "RClone is enabled, uploading backup"
-    rclone --config /tmp/rclone.conf copy "${zip_destination_dir}/gitlab_backup_group_${group_id}_${date_and_time}.zip" "s3:${rclone_bucket}/gitlab/gitlab-backup_${group_id}_${date_and_time}"
-  fi
-
-  echo "Done."
-
+  echo "All done."
 }
+
 
 function gitlab_update_file() {
   project_id="$1"
